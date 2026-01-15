@@ -1,3 +1,4 @@
+import time
 import re
 import os
 import io
@@ -7,7 +8,6 @@ import datetime
 import base64
 from datetime import timedelta
 from logging.handlers import TimedRotatingFileHandler
-
 from dotenv import load_dotenv
 
 # Telegram Imports
@@ -423,6 +423,46 @@ class GeminiBrain:
     def analyze_dialog_turn(self, history, template_list, known_data=None, current_active_template=None, mode="NORMAL"):
         if known_data is None: known_data = {}
 
+        response_schema = {
+            "type": "OBJECT",
+            "properties": {
+                "status": {
+                    "type": "STRING",
+                    "enum": ["CLARIFICATION_NEEDED", "PROFILE_UPDATE", "TEMPLATE_SELECTED", "WAITING_FOR_CONFIRMATION",
+                             "READY_TO_GENERATE"]
+                },
+                "bot_reply": {"type": "STRING"},
+                "selected_template_name": {"type": "STRING", "nullable": True},
+                "extracted_data": {
+                    "type": "OBJECT",
+                    "properties": {
+                        # Основні поля профілю
+                        "STUDENTS_NAME": {"type": "STRING"},
+                        "STUDENTS_PHONE": {"type": "STRING"},
+                        "STUDENTS_EMAIL": {"type": "STRING"},
+                        "DATE_OF_BIRTH": {"type": "STRING"},
+                        "SPECIALTY": {"type": "STRING"},
+                        "GROUP": {"type": "STRING"},
+                        "PARENTS_NAME": {"type": "STRING"},
+                        "PARENTS_PHONE": {"type": "STRING"},
+
+                        # Поля для заяв (динамічні)
+                        "DATE_FROM": {"type": "STRING"},
+                        "DATE_TO": {"type": "STRING"},
+                        "REASON": {"type": "STRING"},
+                        "SPECIALITY_TO": {"type": "STRING"},
+                        "SUBJECT": {"type": "STRING"},
+                        "DATE_OF_SIGNING": {"type": "STRING"},
+                        "STUDY_YEAR": {"type": "STRING"},
+                        "STUDY_SEMESTER": {"type": "STRING"},
+                        "LESSONS_RANGE": {"type": "STRING"},
+                    },
+                    "nullable": True
+                }
+            },
+            "required": ["status", "bot_reply"]
+        }
+
         templates_str = "\n".join([f"- {t['name']}" for t in template_list])
         current_date_obj = datetime.date.today()
         current_date_str = current_date_obj.strftime("%d.%m.%Y")
@@ -445,8 +485,8 @@ class GeminiBrain:
             focus_instruction = f"URGENT: Active template is '{current_active_template}'. Focus ONLY on gathering missing fields for this document."
 
         prompt = f"""
-        You are the AI Administrator for King Danylo University College Administration. 
-        GOAL: Identify request, gather data, output JSON.
+        You are the AI Administrator for King Danylo University College Administration. (NO DEANS OFFICE, ONLY COLLEGE ADMINISTRATION)
+        GOAL: Identify request, gather data, output JSON based on the SCHEMA.
 
         ### 1. SYSTEM CONTEXT
         - Mode: {mode} (If EDITING -> Only update profile).
@@ -468,6 +508,7 @@ class GeminiBrain:
           - If value missing -> Output `CLARIFICATION_NEEDED`.
 
         ### 4. DATA PROCESSING & RESTRICTIONS (CRITICAL)
+        - **STRICT SCHEMA:** You can ONLY output fields defined in the 'extracted_data' schema. Do not invent new fields.
         - **NO FILE UPLOADS:** DO NOT ask the user to upload photos, scans, or documents (medical certs, passports, tickets). 
         - **HANDLING PROOFS:** If a reason implies a document (e.g., "sick leave" -> medical cert, "border crossing" -> passport stamp):
           - Do NOT ask to see it here.
@@ -498,37 +539,57 @@ class GeminiBrain:
           "extracted_data": {{ "FIELD": "VALUE" }}
         }}
         """
+
         # Спрощений виклик без складної схеми (для економії токенів і швидкості), але з JSON enforcement
-        try:
-            response = self.client.models.generate_content(
-                model=self.model,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    safety_settings=[
-                        types.SafetySetting(category="HARM_CATEGORY_HATE_SPEECH", threshold="BLOCK_NONE"),
-                        types.SafetySetting(category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="BLOCK_NONE"),
-                        types.SafetySetting(category="HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold="BLOCK_NONE"),
-                        types.SafetySetting(category="HARM_CATEGORY_HARASSMENT", threshold="BLOCK_NONE")
-                    ]
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                # Виклик Gemini (з налаштуваннями безпеки, які ми додали раніше)
+                response = self.client.models.generate_content(
+                    model=self.model,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        safety_settings=[
+                            types.SafetySetting(category="HARM_CATEGORY_HATE_SPEECH", threshold="BLOCK_NONE"),
+                            types.SafetySetting(category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="BLOCK_NONE"),
+                            types.SafetySetting(category="HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold="BLOCK_NONE"),
+                            types.SafetySetting(category="HARM_CATEGORY_HARASSMENT", threshold="BLOCK_NONE")
+                        ]
+                    )
                 )
-            )
 
-            if not response.text:
-                logger.warning("⚠️ Gemini returned EMPTY response (Safety Filter?).")
-                return {"status": "CLARIFICATION_NEEDED",
-                        "bot_reply": "Я не знаю, що відповісти. Сформулюйте запит інакше."}
+                if not response.text:
+                    logger.warning("⚠️ Gemini returned EMPTY response.")
+                    return {"status": "CLARIFICATION_NEEDED",
+                            "bot_reply": "Я не знаю, що відповісти. Сформулюйте запит інакше."}
 
-            raw_text = response.text.strip()
-            if raw_text.startswith("```"):
-                raw_text = raw_text.strip("`").replace("json\n", "", 1).strip()
+                raw_text = response.text.strip()
+                if raw_text.startswith("```"):
+                    raw_text = raw_text.strip("`").replace("json\n", "", 1).strip()
 
-            return json.loads(raw_text)
+                # Якщо успішно розпарсили JSON — повертаємо результат і виходимо з циклу
+                return json.loads(raw_text)
 
-        except Exception as e:
-            logger.error(f"❌ AI Brain Error: {e}")
-            return {"status": "CLARIFICATION_NEEDED", "bot_reply": "Виникла технічна помилка. Спробуйте ще раз."}
+            except Exception as e:
+                error_str = str(e)
+                is_last_attempt = (attempt == max_retries - 1)
 
+                # Перевіряємо, чи це помилка перевантаження (503 або 429)
+                if "503" in error_str or "overloaded" in error_str or "429" in error_str:
+                    if is_last_attempt:
+                        logger.error(f"❌ Gemini Failed after {max_retries} attempts: {e}")
+                        return {"status": "CLARIFICATION_NEEDED",
+                                "bot_reply": "Сервер перевантажений. Спробуйте пізніше."}
+
+                    logger.warning(f"⚠️ Gemini Overloaded (Attempt {attempt + 1}/{max_retries}). Retrying in 2s...")
+                    time.sleep(2)  # Чекаємо 2 секунди перед наступною спробою
+                    continue
+
+                else:
+                    # Якщо помилка інша (наприклад, невірний ключ), не мучимо сервер, а падаємо одразу
+                    logger.error(f"❌ AI Brain Critical Error: {e}")
+                    return {"status": "CLARIFICATION_NEEDED", "bot_reply": "Виникла технічна помилка."}
 
 # Ініціалізація
 drive_mgr = DriveManager()
