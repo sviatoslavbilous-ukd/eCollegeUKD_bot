@@ -2,6 +2,7 @@
 token.json
 client_secret.json
 .env
+.env.test
 
 # Логи (щоб не засмічувати репозиторій історією роботи)
 logs/

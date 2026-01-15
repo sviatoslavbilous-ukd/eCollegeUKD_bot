@@ -1027,6 +1027,20 @@ async def post_init(application: Application):
         BotCommand("help", "ℹ️ Допомога")
     ]
     await application.bot.set_my_commands(commands)
+
+    mode = os.getenv("MODE", "PROD")  # За замовчуванням PROD
+    admin_id = os.getenv("ADMIN_ID")  # Ваш ID з .env
+
+    if mode == "DEV" and admin_id:
+        try:
+            await application.bot.send_message(
+                chat_id=admin_id,
+                text="👨‍💻 **УВАГА:** Бот запущено в локальному (DEV) режимі!",
+                parse_mode="Markdown"
+            )
+        except Exception as e:
+            logger.warning(f"Не вдалося надіслати сповіщення адміну: {e}")
+
     logger.info("✅ Bot Started.")
 
 
