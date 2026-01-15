@@ -1,0 +1,410 @@
+2026-01-14 08:37:52 | INFO | ✅ Google Drive API connected successfully.
+2026-01-14 08:37:52 | INFO | ✅ Google Sheets API connected successfully.
+2026-01-14 08:37:52 | INFO | ✅ Gmail API connected.
+2026-01-14 08:37:52 | INFO | ✅ Gemini AI connected.
+2026-01-14 08:37:52 | INFO | 🤖 Bot Starting...
+2026-01-14 08:37:53 | INFO | ✅ Bot Started.
+2026-01-14 09:25:23 | INFO | ✅ Google Drive API connected successfully.
+2026-01-14 09:25:23 | INFO | ✅ Google Sheets API connected successfully.
+2026-01-14 09:25:23 | INFO | ✅ Gmail API connected.
+2026-01-14 09:25:24 | INFO | ✅ Gemini AI connected.
+2026-01-14 09:25:24 | INFO | 🤖 Bot Starting...
+2026-01-14 09:25:26 | INFO | ✅ Bot Started.
+2026-01-14 09:48:44 | INFO | ✅ Google Drive API connected successfully.
+2026-01-14 09:48:44 | INFO | ✅ Google Sheets API connected successfully.
+2026-01-14 09:48:44 | INFO | ✅ Gmail API connected.
+2026-01-14 09:48:45 | INFO | ✅ Gemini AI connected.
+2026-01-14 09:48:45 | INFO | 🤖 Bot Starting...
+2026-01-14 09:48:46 | INFO | ✅ Bot Started.
+2026-01-14 09:51:57 | INFO | [386442412] STARTED Interaction.
+2026-01-14 09:51:59 | INFO | [386442412] AUTH SUCCESS via Database.
+2026-01-14 09:52:11 | INFO | [386442412] Spam Counter: 1/10
+2026-01-14 09:52:21 | INFO | [386442412] AI Status: TEMPLATE_SELECTED | Tmpl: Заява про складання сесії за індивідуальним графіком
+2026-01-14 09:52:46 | INFO | [386442412] AI Status: WAITING_FOR_CONFIRMATION | Tmpl: Заява про складання сесії за індивідуальним графіком
+2026-01-14 09:53:07 | INFO | [386442412] AI Status: READY_TO_GENERATE | Tmpl: Заява про складання сесії за індивідуальним графіком
+2026-01-14 09:53:17 | INFO | 📧 Email sent to sviatoslav.bilous@ukd.edu.ua with Заява_Білоус_Святослав_Олегович.pdf
+2026-01-14 09:53:17 | INFO | 📊 Logged to Sheets: Заява про складання сесії за індивідуальним графіком for Білоус Святослав Олегович
+2026-01-14 09:53:17 | INFO | [386442412] Email sent to print.
+2026-01-14 09:53:17 | INFO | [386442412] Document Transaction Complete.
+2026-01-14 09:53:50 | INFO | [386442412] Spam Counter: 1/10
+2026-01-14 09:53:56 | INFO | [386442412] AI Status: CLARIFICATION_NEEDED | Tmpl: None
+2026-01-14 09:54:01 | INFO | [386442412] Spam Counter: 2/10
+2026-01-14 09:54:05 | INFO | [386442412] AI Status: PROFILE_UPDATE | Tmpl: None
+2026-01-14 09:54:05 | INFO | ✏️ Updated GROUP for ID 386442412: КМрс-24-1
+2026-01-14 09:55:40 | INFO | [386442412] Spam Counter: 3/10
+2026-01-14 09:55:51 | INFO | [386442412] AI Status: TEMPLATE_SELECTED | Tmpl: Заява про складання сесії за індивідуальним графіком
+2026-01-14 09:56:19 | INFO | [386442412] AI Status: WAITING_FOR_CONFIRMATION | Tmpl: Заява про складання сесії за індивідуальним графіком
+2026-01-14 09:56:36 | INFO | [386442412] AI Status: READY_TO_GENERATE | Tmpl: Заява про складання сесії за індивідуальним графіком
+2026-01-14 09:56:42 | INFO | 📧 Email sent to sviatoslav.bilous@ukd.edu.ua with Заява_Білоус_Святослав_Олегович.pdf
+2026-01-14 09:56:43 | INFO | 📊 Logged to Sheets: Заява про складання сесії за індивідуальним графіком for Білоус Святослав Олегович
+2026-01-14 09:56:43 | INFO | [386442412] Email sent to print.
+2026-01-14 09:56:43 | INFO | [386442412] Document Transaction Complete.
+2026-01-14 10:07:34 | INFO | [386442412] STARTED Interaction.
+2026-01-14 10:07:37 | INFO | [386442412] New User - Requesting Email.
+2026-01-14 10:07:49 | INFO | [386442412] Spam Counter: 1/10
+2026-01-14 10:07:50 | INFO | 💾 Linked Telegram_ID 386442412 to sviatoslav.bilous@ukd.edu.ua
+2026-01-14 10:07:50 | INFO | [386442412] Auth Linked via Email: sviatoslav.bilous@ukd.edu.ua
+2026-01-14 10:44:15 | INFO | ✅ Google Drive API connected successfully.
+2026-01-14 10:44:15 | INFO | ✅ Google Sheets API connected successfully.
+2026-01-14 10:44:15 | INFO | ✅ Gmail API connected.
+2026-01-14 10:44:16 | INFO | ✅ Gemini AI connected.
+2026-01-14 10:44:16 | INFO | 🤖 Bot Starting...
+2026-01-14 10:44:18 | INFO | ✅ Bot Started.
+2026-01-14 10:45:14 | INFO | [386442412] STARTED Interaction.
+2026-01-14 10:45:17 | INFO | [386442412] New User - Requesting Email.
+2026-01-14 10:45:24 | INFO | [386442412] Spam Counter: 1/10
+2026-01-14 10:45:26 | INFO | 💾 Linked Telegram_ID 386442412 to sviatoslav.bilous@ukd.edu.ua
+2026-01-14 10:45:26 | INFO | [386442412] Auth Linked via Email: sviatoslav.bilous@ukd.edu.ua
+2026-01-14 10:45:33 | INFO | ✏️ Updated DATE_OF_BIRTH for ID 386442412: 07.02.2002
+2026-01-14 10:49:58 | INFO | ✅ Google Drive API connected successfully.
+2026-01-14 10:49:58 | INFO | ✅ Google Sheets API connected successfully.
+2026-01-14 10:49:58 | INFO | ✅ Gmail API connected.
+2026-01-14 10:49:59 | INFO | ✅ Gemini AI connected.
+2026-01-14 10:49:59 | INFO | 🤖 Bot Starting...
+2026-01-14 10:50:01 | INFO | ✅ Bot Started.
+2026-01-14 10:50:04 | INFO | [386442412] STARTED Interaction.
+2026-01-14 10:50:06 | INFO | [386442412] AUTH SUCCESS via Database.
+2026-01-14 10:50:21 | INFO | [386442412] Spam Counter: 1/10
+2026-01-14 10:50:29 | INFO | [386442412] AI Status: TEMPLATE_SELECTED | Tmpl: Заява про складання сесії за індивідуальним графіком
+2026-01-14 10:51:31 | INFO | ✅ Google Drive API connected successfully.
+2026-01-14 10:51:31 | INFO | ✅ Google Sheets API connected successfully.
+2026-01-14 10:51:31 | INFO | ✅ Gmail API connected.
+2026-01-14 10:51:31 | INFO | ✅ Gemini AI connected.
+2026-01-14 10:51:31 | INFO | 🤖 Bot Starting...
+2026-01-14 10:51:32 | INFO | ✅ Bot Started.
+2026-01-14 10:52:06 | INFO | [386442412] STARTED Interaction.
+2026-01-14 10:52:08 | INFO | [386442412] New User - Requesting Email.
+2026-01-14 10:52:16 | INFO | [386442412] Spam Counter: 1/10
+2026-01-14 10:52:19 | INFO | 💾 Linked Telegram_ID 386442412 to sviatoslav.bilous@ukd.edu.ua
+2026-01-14 10:52:19 | INFO | [386442412] Auth Linked via Email: sviatoslav.bilous@ukd.edu.ua
+2026-01-14 10:52:25 | INFO | ✏️ Updated DATE_OF_BIRTH for ID 386442412: 07.02.2002
+2026-01-14 10:52:29 | ERROR | Column PHONE or TELEGRAM_ID not found for update.
+2026-01-14 10:54:03 | INFO | ✅ Google Drive API connected successfully.
+2026-01-14 10:54:03 | INFO | ✅ Google Sheets API connected successfully.
+2026-01-14 10:54:03 | INFO | ✅ Gmail API connected.
+2026-01-14 10:54:03 | INFO | ✅ Gemini AI connected.
+2026-01-14 10:54:03 | INFO | 🤖 Bot Starting...
+2026-01-14 10:54:04 | INFO | ✅ Bot Started.
+2026-01-14 10:54:05 | INFO | [386442412] STARTED Interaction.
+2026-01-14 10:54:07 | INFO | [386442412] New User - Requesting Email.
+2026-01-14 10:54:18 | INFO | [386442412] Spam Counter: 1/10
+2026-01-14 10:54:21 | INFO | 💾 Linked Telegram_ID 386442412 to sviatoslav.bilous@ukd.edu.ua
+2026-01-14 10:54:21 | INFO | [386442412] Auth Linked via Email: sviatoslav.bilous@ukd.edu.ua
+2026-01-14 10:54:30 | INFO | ✏️ Updated DATE_OF_BIRTH for ID 386442412: 07.02.2002
+2026-01-14 10:54:34 | INFO | ✏️ Updated STUDENTS_PHONE for ID 386442412: 
+2026-01-14 10:55:30 | INFO | ✏️ Updated PARENTS_NAME for ID 386442412: Білоус Леся Михайлівна
+2026-01-14 10:55:40 | INFO | ✏️ Updated PARENTS_PHONE for ID 386442412: +380662410348
+2026-01-14 11:11:05 | INFO | ✅ Google Drive API connected successfully.
+2026-01-14 11:11:05 | INFO | ✅ Google Sheets API connected successfully.
+2026-01-14 11:11:05 | INFO | ✅ Gmail API connected.
+2026-01-14 11:11:06 | INFO | ✅ Gemini AI connected.
+2026-01-14 11:11:06 | INFO | 🤖 Bot Starting...
+2026-01-14 11:11:07 | INFO | ✅ Bot Started.
+2026-01-14 11:11:11 | INFO | [386442412] STARTED Interaction.
+2026-01-14 11:11:14 | INFO | [386442412] AUTH SUCCESS via Database.
+2026-01-14 11:11:26 | INFO | [386442412] Spam Counter: 1/10
+2026-01-14 11:11:35 | INFO | [386442412] AI Status: CLARIFICATION_NEEDED | Tmpl: None
+2026-01-14 11:11:44 | INFO | [386442412] Spam Counter: 2/10
+2026-01-14 11:11:49 | INFO | [386442412] AI Status: CLARIFICATION_NEEDED | Tmpl: None
+2026-01-14 11:11:56 | INFO | [386442412] Spam Counter: 3/10
+2026-01-14 11:12:07 | INFO | [386442412] AI Status: CLARIFICATION_NEEDED | Tmpl: None
+2026-01-14 11:12:20 | INFO | [386442412] STARTED Interaction.
+2026-01-14 11:12:21 | INFO | [386442412] New User - Requesting Email.
+2026-01-14 11:12:30 | INFO | [386442412] Spam Counter: 1/10
+2026-01-14 11:12:33 | INFO | 💾 Linked Telegram_ID 386442412 to sviatoslav.bilous@ukd.edu.ua
+2026-01-14 11:12:33 | INFO | [386442412] Auth Linked via Email: sviatoslav.bilous@ukd.edu.ua
+2026-01-14 11:12:39 | INFO | ✏️ Updated DATE_OF_BIRTH for ID 386442412: 07.02.2002
+2026-01-14 11:12:43 | INFO | ✏️ Updated STUDENTS_PHONE for ID 386442412: +380662410348
+2026-01-14 11:12:56 | INFO | ✏️ Updated PARENTS_NAME for ID 386442412: Білоус Леся Михайлівна
+2026-01-14 11:13:15 | INFO | ✏️ Updated PARENTS_PHONE for ID 386442412: +380662410348
+2026-01-14 11:13:54 | INFO | ✅ Google Drive API connected successfully.
+2026-01-14 11:13:54 | INFO | ✅ Google Sheets API connected successfully.
+2026-01-14 11:13:54 | INFO | ✅ Gmail API connected.
+2026-01-14 11:13:55 | INFO | ✅ Gemini AI connected.
+2026-01-14 11:13:55 | INFO | 🤖 Bot Starting...
+2026-01-14 11:13:56 | INFO | ✅ Bot Started.
+2026-01-14 11:13:58 | INFO | [386442412] STARTED Interaction.
+2026-01-14 11:14:00 | INFO | [386442412] AUTH SUCCESS via Database.
+2026-01-14 11:14:13 | INFO | [386442412] STARTED Interaction.
+2026-01-14 11:14:13 | INFO | [386442412] New User - Requesting Email.
+2026-01-14 11:14:19 | INFO | [386442412] Spam Counter: 1/10
+2026-01-14 11:14:23 | INFO | 💾 Linked Telegram_ID 386442412 to sviatoslav.bilous@ukd.edu.ua
+2026-01-14 11:14:23 | INFO | [386442412] Auth Linked via Email: sviatoslav.bilous@ukd.edu.ua
+2026-01-14 11:15:22 | INFO | ✏️ Updated DATE_OF_BIRTH for ID 386442412: 07.02.2002
+2026-01-14 11:15:31 | INFO | ✏️ Updated STUDENTS_PHONE for ID 386442412: +380662410348
+2026-01-14 11:15:39 | INFO | ✏️ Updated PARENTS_NAME for ID 386442412: Білоус Леся Михайлівна
+2026-01-14 11:15:51 | INFO | ✏️ Updated PARENTS_PHONE for ID 386442412: +380662410348
+2026-01-14 11:23:54 | INFO | [386442412] STARTED Interaction.
+2026-01-14 11:23:56 | INFO | [386442412] New User - Requesting Email.
+2026-01-14 11:24:06 | INFO | [386442412] Spam Counter: 1/10
+2026-01-14 11:24:08 | INFO | 💾 Linked Telegram_ID 386442412 to sviatoslav.bilous@ukd.edu.ua
+2026-01-14 11:24:08 | INFO | [386442412] Auth Linked via Email: sviatoslav.bilous@ukd.edu.ua
+2026-01-14 11:24:19 | INFO | ✏️ Updated DATE_OF_BIRTH for ID 386442412: 07.02.2002
+2026-01-14 11:24:24 | INFO | ✏️ Updated STUDENTS_PHONE for ID 386442412: +380662410348
+2026-01-14 11:24:36 | INFO | ✏️ Updated PARENTS_NAME for ID 386442412: Білоус Леся Михайлівна
+2026-01-14 11:24:42 | INFO | ✏️ Updated PARENTS_PHONE for ID 386442412: +380662410348
+2026-01-14 11:24:52 | INFO | ✅ Google Drive API connected successfully.
+2026-01-14 11:24:52 | INFO | ✅ Google Sheets API connected successfully.
+2026-01-14 11:24:52 | INFO | ✅ Gmail API connected.
+2026-01-14 11:24:53 | INFO | ✅ Gemini AI connected.
+2026-01-14 11:24:53 | INFO | 🤖 Bot Starting...
+2026-01-14 11:24:54 | INFO | ✅ Bot Started.
+2026-01-14 11:25:10 | INFO | [386442412] STARTED Interaction.
+2026-01-14 11:25:12 | INFO | [386442412] New User - Requesting Email.
+2026-01-14 11:25:17 | INFO | [386442412] Spam Counter: 1/10
+2026-01-14 11:25:20 | INFO | 💾 Linked Telegram_ID 386442412 to sviatoslav.bilous@ukd.edu.ua
+2026-01-14 11:25:20 | INFO | [386442412] Auth Linked via Email: sviatoslav.bilous@ukd.edu.ua
+2026-01-14 11:25:25 | INFO | ✏️ Updated DATE_OF_BIRTH for ID 386442412: 07.02.2002
+2026-01-14 11:25:30 | INFO | ✏️ Updated STUDENTS_PHONE for ID 386442412: +380662410348
+2026-01-14 11:25:37 | INFO | ✏️ Updated PARENTS_NAME for ID 386442412: Білоус Леся Михайлівна
+2026-01-14 11:25:51 | INFO | ✏️ Updated PARENTS_PHONE for ID 386442412: +380502737395
+2026-01-14 12:04:16 | INFO | ✅ Google Drive API connected successfully.
+2026-01-14 12:04:16 | INFO | ✅ Google Sheets API connected successfully.
+2026-01-14 12:04:16 | INFO | ✅ Gmail API connected.
+2026-01-14 12:04:18 | INFO | ✅ Gemini AI connected.
+2026-01-14 12:04:18 | INFO | 🤖 Bot Starting...
+2026-01-14 12:04:20 | INFO | ✅ Bot Started.
+2026-01-14 12:06:23 | INFO | [386442412] STARTED Interaction.
+2026-01-14 12:06:25 | INFO | [386442412] AUTH SUCCESS via Database.
+2026-01-14 13:06:24 | ERROR | ❌ Failed to log to Sheets: [WinError 10054] An existing connection was forcibly closed by the remote host
+2026-01-14 13:06:24 | INFO | [386442412] Session Timeout (Cleaned history).
+2026-01-14 14:15:24 | INFO | ✅ Google Drive API connected successfully.
+2026-01-14 14:15:24 | INFO | ✅ Google Sheets API connected successfully.
+2026-01-14 14:15:24 | INFO | ✅ Gmail API connected.
+2026-01-14 14:15:25 | INFO | ✅ Gemini AI connected.
+2026-01-14 14:15:25 | INFO | 🤖 Bot Starting...
+2026-01-14 14:15:27 | INFO | ✅ Bot Started.
+2026-01-14 14:15:39 | INFO | [386442412] STARTED Interaction.
+2026-01-14 14:15:43 | INFO | [386442412] AUTH SUCCESS via Database.
+2026-01-14 14:16:06 | INFO | [386442412] Spam Counter: 1/10
+2026-01-14 14:16:14 | INFO | [386442412] 🧠 AI DECISION: {"status": "CLARIFICATION_NEEDED", "bot_reply": "У разі неявки на іспит вам необхідно подати заяву про складання сесії за індивідуальним графіком. Для того щоб я міг підготувати документ, будь ласка, вкажіть назву навчальної дисципліни та причину вашої відсутності (наприклад, за станом здоров'я чи за сімейними обставинами). Зверніть увагу: оригінал документа, що підтверджує причину пропуску, потрібно буде пізніше надати до канцелярії коледжу.", "selected_template_name": "Заява про складання сесії за індивідуальним графіком", "extracted_data": {}}
+2026-01-14 14:17:16 | INFO | [386442412] Spam Counter: 2/10
+2026-01-14 14:17:27 | INFO | [386442412] 🧠 AI DECISION: {"status": "WAITING_FOR_CONFIRMATION", "bot_reply": "Я підготував дані для вашої заяви про складання сесії за індивідуальним графіком:\n\n- Студент: Білоус Святослав Олегович\n- Група: КІПЗс-25-1\n- Навчальна дисципліна: Історія держави і права\n- Причина: неявка на іспит\n\nВсе вірно? Якщо так, я згенерую заяву. Нагадую, що при наявності документів, які підтверджують поважну причину пропуску, їх оригінали необхідно буде надати до канцелярії коледжу.", "selected_template_name": "Заява про складання сесії за індивідуальним графіком", "extracted_data": {"STUDENTS_NAME": "Білоус Святослав Олегович", "GROUP": "КІПЗс-25-1", "SUBJECT": "Історія держави і права", "REASON": "неявкою на іспит"}}
+2026-01-14 14:17:41 | INFO | [386442412] Spam Counter: 3/10
+2026-01-14 14:17:48 | INFO | [386442412] 🧠 AI DECISION: {"status": "READY_TO_GENERATE", "bot_reply": "Дякую за підтвердження. Вашу заяву про складання сесії за індивідуальним графіком з дисципліни «Історія держави і права» сформовано. Нагадую, що оригінал документа, який підтверджує поважну причину пропуску (за наявності), необхідно надати до канцелярії коледжу.", "selected_template_name": "Заява про складання сесії за індивідуальним графіком", "extracted_data": {"STUDENTS_NAME": "Білоус Святослав Олегович", "GROUP": "КІПЗс-25-1", "SUBJECT": "Історія держави і права", "REASON": "неявкою на іспит"}}
+2026-01-14 14:17:58 | INFO | 📧 Email sent to sviatoslav.bilous@ukd.edu.ua with Заява_Білоус_Святослав_Олегович.pdf
+2026-01-14 14:17:59 | INFO | 📊 Logged to Sheets: Заява про складання сесії за індивідуальним графіком for Білоус Святослав Олегович
+2026-01-14 14:17:59 | ERROR | Gen Error: ExtBot.edit_message_text() got multiple values for argument 'text'
+2026-01-14 14:17:59 | ERROR | [386442412] AI Error: ExtBot.edit_message_text() got multiple values for argument 'text'
+Traceback (most recent call last):
+  File "D:\Files\UKD\Innovations\eCollegeBot\main.py", line 907, in handle_message
+    await context.bot.edit_message_text(chat_id, status_msg.message_id, text=final_text)
+          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: ExtBot.edit_message_text() got multiple values for argument 'text'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "D:\Files\UKD\Innovations\eCollegeBot\main.py", line 920, in handle_message
+    await context.bot.edit_message_text(chat_id, status_msg.message_id, text="❌ Помилка генерації.")
+          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: ExtBot.edit_message_text() got multiple values for argument 'text'
+2026-01-14 14:44:27 | INFO | ✅ Google Drive API connected successfully.
+2026-01-14 14:44:27 | INFO | ✅ Google Sheets API connected successfully.
+2026-01-14 14:44:27 | INFO | ✅ Gmail API connected.
+2026-01-14 14:44:28 | INFO | ✅ Gemini AI connected.
+2026-01-14 14:44:28 | INFO | 🤖 Bot Starting...
+2026-01-14 14:44:30 | INFO | ✅ Bot Started.
+2026-01-14 14:44:30 | INFO | [386442412] STARTED Interaction.
+2026-01-14 14:44:33 | INFO | [386442412] AUTH SUCCESS via Database.
+2026-01-14 14:45:12 | INFO | [386442412] Spam Counter: 1/10
+2026-01-14 14:45:22 | INFO | [386442412] 🧠 AI DECISION: {"status": "CLARIFICATION_NEEDED", "bot_reply": "Для розв'язання питання з неявкою на іспит вам необхідно подати «Заяву про складання сесії за індивідуальним графіком». \n\nБудь ласка, уточніть наступну інформацію:\n1. Причину неявки (наприклад: за станом здоров'я, за сімейними обставинами тощо).\n2. Назву навчальної дисципліни (іспиту).\n3. Дату, коли мав відбутися іспит.\n\nЗауважте: якщо причина вашої відсутності підтверджується офіційним документом (наприклад, медичною довідкою), його оригінал потрібно буде згодом надати до адміністрації коледжу особисто.", "selected_template_name": "Заява про складання сесії за індивідуальним графіком", "extracted_data": {}}
+2026-01-14 14:46:05 | INFO | [386442412] Spam Counter: 2/10
+2026-01-14 14:46:14 | INFO | [386442412] 🧠 AI DECISION: {"status": "CLARIFICATION_NEEDED", "bot_reply": "Зрозумів. У такому разі в заяві вкажемо причину «за сімейними обставинами». \n\nДля продовження мені потрібно уточнити ще два моменти:\n1. Назву навчальної дисципліни (іспиту), яку потрібно скласти.\n2. Дату, коли цей іспит проводився згідно з розкладом.", "selected_template_name": "Заява про складання сесії за індивідуальним графіком", "extracted_data": {"REASON": "сімейними обставинами"}}
+2026-01-14 14:46:28 | INFO | [386442412] Spam Counter: 3/10
+2026-01-14 14:46:35 | INFO | [386442412] 🧠 AI DECISION: {"status": "WAITING_FOR_CONFIRMATION", "bot_reply": "Дякую. Я зібрав усі необхідні дані для формування заяви. Перевірте, будь ласка, чи все правильно:\n\n- **Тип заяви:** Заява про складання сесії за індивідуальним графіком\n- **Навчальна дисципліна:** Теорія держави і права\n- **Дата пропущеного іспиту:** 27.12.2025\n- **Причина:** за сімейними обставинами\n\nЯкщо все правильно, напишіть «Підтверджую» або «Так», і я підготую документ для генерації.", "selected_template_name": "Заява про складання сесії за індивідуальним графіком", "extracted_data": {"REASON": "сімейними обставинами", "DISCIPLINE": "Теорія держави і права", "EXAM_DATE": "27.12.2025"}}
+2026-01-14 14:46:41 | INFO | [386442412] Spam Counter: 4/10
+2026-01-14 14:46:47 | INFO | [386442412] 🧠 AI DECISION: {"status": "READY_TO_GENERATE", "bot_reply": "Чудово! Дані підтверджено. Вашу заяву про складання сесії за індивідуальним графіком сформовано. Передаю її на обробку.", "selected_template_name": "Заява про складання сесії за індивідуальним графіком", "extracted_data": {"DISCIPLINE": "Теорія держави і права", "DATE": "27.12.2025", "REASON": "за сімейними обставинами"}}
+2026-01-14 14:46:57 | INFO | 📧 Email sent to sviatoslav.bilous@ukd.edu.ua with Заява_Білоус_Святослав_Олегович.pdf
+2026-01-14 14:46:58 | INFO | 📊 Logged to Sheets: Заява про складання сесії за індивідуальним графіком for Білоус Святослав Олегович
+2026-01-14 14:46:58 | ERROR | Gen Error: ExtBot.edit_message_text() got multiple values for argument 'text'
+2026-01-14 14:46:58 | ERROR | [386442412] AI Error: ExtBot.edit_message_text() got multiple values for argument 'text'
+Traceback (most recent call last):
+  File "D:\Files\UKD\Innovations\eCollegeBot\main.py", line 907, in handle_message
+    await context.bot.edit_message_text(chat_id, status_msg.message_id, text=final_text)
+          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: ExtBot.edit_message_text() got multiple values for argument 'text'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "D:\Files\UKD\Innovations\eCollegeBot\main.py", line 920, in handle_message
+    await context.bot.edit_message_text(chat_id, status_msg.message_id, text="❌ Помилка генерації.")
+          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: ExtBot.edit_message_text() got multiple values for argument 'text'
+2026-01-14 14:47:44 | INFO | ✅ Google Drive API connected successfully.
+2026-01-14 14:47:44 | INFO | ✅ Google Sheets API connected successfully.
+2026-01-14 14:47:44 | INFO | ✅ Gmail API connected.
+2026-01-14 14:47:45 | INFO | ✅ Gemini AI connected.
+2026-01-14 14:47:45 | INFO | 🤖 Bot Starting...
+2026-01-14 14:47:48 | INFO | ✅ Bot Started.
+2026-01-14 14:48:02 | INFO | [386442412] STARTED Interaction.
+2026-01-14 14:48:05 | INFO | [386442412] AUTH SUCCESS via Database.
+2026-01-14 14:48:21 | INFO | [386442412] Spam Counter: 1/10
+2026-01-14 14:48:29 | INFO | [386442412] 🧠 AI DECISION: {"status": "TEMPLATE_SELECTED", "bot_reply": "Зрозумів вас. У випадку неявки на іспит вам необхідно оформити заяву про складання сесії за індивідуальним графіком. Будь ласка, вкажіть причину вашої відсутності (наприклад, за станом здоров'я чи через сімейні обставини) та дату, коли відбувся іспит з дисципліни 'Теорія держави і права'.", "selected_template_name": "Заява про складання сесії за індивідуальним графіком", "extracted_data": {"SUBJECT": "Теорія держави і права"}}
+2026-01-14 14:49:04 | INFO | [386442412] 🧠 AI DECISION: {"status": "WAITING_FOR_CONFIRMATION", "bot_reply": "Дякую. Я зібрав необхідну інформацію для оформлення заяви. Перевірте, будь ласка, чи все правильно:\n\n- **Тип заяви**: Заява про складання сесії за індивідуальним графіком\n- **Дисципліна**: Теорія держави і права\n- **Дата іспиту**: 27.12.2025\n- **Причина**: неявка на іспит\n\nЯкщо все правильно, напишіть 'Так' або 'Підтверджую'. Нагадую, що якщо у вас є оригінал документа, що підтверджує причину неявки (наприклад, довідка від лікаря), його потрібно буде надати до навчальної частини коледжу.", "selected_template_name": "Заява про складання сесії за індивідуальним графіком", "extracted_data": {"DISCIPLINE": "Теорія держави і права", "EXAM_DATE": "27.12.2025", "REASON": "неявкою на іспит"}}
+2026-01-14 14:49:18 | INFO | [386442412] 🧠 AI DECISION: {"status": "READY_TO_GENERATE", "bot_reply": "Чудово! Вашу заяву про складання сесії за індивідуальним графіком успішно сформовано та передано до опрацювання. Нагадую, що вам необхідно надати оригінал документа, що підтверджує причину неявки (якщо такий є), до навчальної частини коледжу.", "selected_template_name": "Заява про складання сесії за індивідуальним графіком", "extracted_data": {"DISCIPLINE": "Теорія держави і права", "EXAM_DATE": "27.12.2025", "REASON": "неявкою на іспит"}}
+2026-01-14 14:49:38 | ERROR | ❌ Email sending error: Unable to find the server at gmail.googleapis.com
+2026-01-14 14:49:38 | ERROR | ❌ Failed to log to Sheets: [WinError 10054] An existing connection was forcibly closed by the remote host
+2026-01-14 14:49:38 | ERROR | Gen Error: ExtBot.edit_message_text() got multiple values for argument 'text'
+2026-01-14 14:50:25 | INFO | ✅ Google Drive API connected successfully.
+2026-01-14 14:50:25 | INFO | ✅ Google Sheets API connected successfully.
+2026-01-14 14:50:25 | INFO | ✅ Gmail API connected.
+2026-01-14 14:50:26 | INFO | ✅ Gemini AI connected.
+2026-01-14 14:50:26 | INFO | 🤖 Bot Starting...
+2026-01-14 14:50:28 | INFO | ✅ Bot Started.
+2026-01-14 14:50:28 | INFO | [386442412] Spam Counter: 1/10
+2026-01-14 14:50:32 | INFO | [386442412] Silent Auth Success.
+2026-01-14 14:50:41 | INFO | [386442412] 🧠 AI DECISION: {"status": "CLARIFICATION_NEEDED", "bot_reply": "Звісно, давайте розпочнемо спочатку. Яку саме заяву ви бажаєте оформити? Ви можете обрати один із варіантів, наприклад: заява про індивідуальний графік, пропуск занять, перевід на іншу форму навчання або отримання академвідпустки. Оберіть потрібну тему, і я допоможу заповнити дані.", "selected_template_name": null, "extracted_data": {}}
+2026-01-14 14:58:13 | INFO | ✅ Google Drive API connected successfully.
+2026-01-14 14:58:13 | INFO | ✅ Google Sheets API connected successfully.
+2026-01-14 14:58:13 | INFO | ✅ Gmail API connected.
+2026-01-14 14:58:15 | INFO | ✅ Gemini AI connected.
+2026-01-14 14:58:15 | INFO | 🤖 Bot Starting...
+2026-01-14 14:58:19 | INFO | ✅ Bot Started.
+2026-01-14 14:58:46 | INFO | [386442412] Spam Counter: 1/10
+2026-01-14 14:58:52 | INFO | [386442412] Silent Auth Success.
+2026-01-14 14:59:05 | INFO | [386442412] 🧠 AI DECISION: {"status": "CLARIFICATION_NEEDED", "bot_reply": "Для оформлення заяви про складання сесії за індивідуальним графіком (у зв'язку з неявкою на іспит) мені необхідно уточнити наступні дані:\n1. Назву навчальної дисципліни (іспиту), яку ви пропустили.\n2. Конкретну причину неявки (наприклад: за станом здоров'я, за сімейними обставинами тощо).\n3. Дату, коли мав відбутися іспит.\n\nБудь ласка, надайте цю інформацію одним повідомленням.", "selected_template_name": "Заява про складання сесії за індивідуальним графіком", "extracted_data": {}}
+2026-01-14 14:59:38 | INFO | [386442412] Spam Counter: 2/10
+2026-01-14 14:59:50 | INFO | [386442412] 🧠 AI DECISION: {"status": "WAITING_FOR_CONFIRMATION", "bot_reply": "Дякую за надану інформацію. Перевірте, будь ласка, чи все правильно вказано для формування заяви:\n\n1. Тип заяви: Заява про складання сесії за індивідуальним графіком\n2. Дисципліна: Історія держави та права\n3. Причина: неявкою на іспит\n4. Дата іспиту: 27.12.2025\n\nЯкщо ці дані вірні, напишіть «Так» або «Підтверджую» для генерації документа.", "selected_template_name": "Заява про складання сесії за індивідуальним графіком", "extracted_data": {"SUBJECT": "Історія держави та права", "REASON": "неявкою на іспит", "EXAM_DATE": "27.12.2025"}}
+2026-01-14 14:59:55 | INFO | [386442412] Spam Counter: 3/10
+2026-01-14 15:00:02 | INFO | [386442412] 🧠 AI DECISION: {"status": "READY_TO_GENERATE", "bot_reply": "Дякую! Вашу заяву про складання сесії за індивідуальним графіком сформовано. Будь ласка, зверніться до коледжу для її підписання. Нагадую, що вам необхідно мати при собі оригінал документа, який підтверджує причину пропуску іспиту, для подання в навчальну частину.", "selected_template_name": "Заява про складання сесії за індивідуальним графіком", "extracted_data": {"STUDENTS_NAME": "Білоус Святослав Олегович", "GROUP": "КІПЗс-25-1", "SPECIALTY": "Інженерія програмного забезпечення", "REASON": "неявкою на іспит", "SUBJECT": "Історія держави та права", "EXAM_DATE": "27.12.2025", "APPLICATION_DATE": "14.01.2026"}}
+2026-01-14 15:00:13 | INFO | 📧 Email sent to sviatoslav.bilous@ukd.edu.ua with Заява_Білоус_Святослав_Олегович.pdf
+2026-01-14 15:00:13 | INFO | 📊 Logged to Sheets: Заява про складання сесії за індивідуальним графіком for Білоус Святослав Олегович
+2026-01-14 15:00:13 | ERROR | Gen Error: ExtBot.edit_message_text() got multiple values for argument 'text'
+2026-01-14 15:02:10 | INFO | ✅ Google Drive API connected successfully.
+2026-01-14 15:02:10 | INFO | ✅ Google Sheets API connected successfully.
+2026-01-14 15:02:10 | INFO | ✅ Gmail API connected.
+2026-01-14 15:02:12 | INFO | ✅ Gemini AI connected.
+2026-01-14 15:02:12 | INFO | 🤖 Bot Starting...
+2026-01-14 15:02:16 | INFO | ✅ Bot Started.
+2026-01-14 15:02:45 | INFO | [386442412] STARTED Interaction.
+2026-01-14 15:02:52 | INFO | [386442412] AUTH SUCCESS via Database.
+2026-01-14 15:03:20 | INFO | [386442412] Spam Counter: 1/10
+2026-01-14 15:03:31 | INFO | [386442412] 🧠 AI DECISION: {"status": "TEMPLATE_SELECTED", "bot_reply": "У разі неявки на іспит Вам необхідно подати заяву про складання сесії за індивідуальним графіком. Будь ласка, вкажіть причину Вашої відсутності (наприклад, 'за станом здоров'я' або 'за сімейними обставинами') та назву дисципліни, з якої був іспит.", "selected_template_name": "Заява про складання сесії за індивідуальним графіком", "extracted_data": {}}
+2026-01-14 15:04:09 | INFO | [386442412] 🧠 AI DECISION: {"status": "CLARIFICATION_NEEDED", "bot_reply": "Дякую за уточнення. Для завершення підготовки заяви мені потрібно знати дату проведення іспиту з дисципліни «Теорія держави та права». Будь ласка, вкажіть її. Також нагадую, що оригінали документів, які підтверджують поважну причину вашої відсутності (за наявності), необхідно буде надати до коледжу особисто.", "selected_template_name": "Заява про складання сесії за індивідуальним графіком", "extracted_data": {"REASON": "сімейними обставинами", "SUBJECT": "Теорія держави та права"}}
+2026-01-14 15:04:41 | INFO | [386442412] 🧠 AI DECISION: {"status": "CLARIFICATION_NEEDED", "bot_reply": "Для оформлення заяви дата проведення іспиту є обов'язковою. Будь ласка, уточніть дату іспиту з дисципліни «Теорія держави та права» (це можна перевірити у розкладі або запитати у старости) та повідомте її мені для завершення формування документа.", "selected_template_name": "Заява про складання сесії за індивідуальним графіком", "extracted_data": {"REASON": "сімейними обставинами", "SUBJECT": "Теорія держави та права"}}
+2026-01-14 15:05:50 | INFO | [386442412] 🧠 AI DECISION: {"status": "CLARIFICATION_NEEDED", "bot_reply": "Мова йде про іспит, який уже відбувся і на якому Ви були відсутні. Для формування заяви мені потрібно вказати саме дату Вашої неявки на іспит з дисципліни «Теорія держави та права». Будь ласка, уточніть цю дату.", "selected_template_name": "Заява про складання сесії за індивідуальним графіком", "extracted_data": {"REASON": "сімейними обставинами", "SUBJECT": "Теорія держави та права"}}
+2026-01-14 15:06:11 | INFO | [386442412] 🧠 AI DECISION: {"status": "WAITING_FOR_CONFIRMATION", "bot_reply": "Дякую, всі необхідні дані для формування заяви зібрано. Будь ласка, перевірте правильність інформації:\n\n- **Тип заяви:** Заява про складання сесії за індивідуальним графіком\n- **ПІБ:** Білоус Святослав Олегович\n- **Група:** КІПЗс-25-1\n- **Дисципліна:** Теорія держави та права\n- **Дата іспиту:** 27.12.2025\n- **Причина:** за сімейними обставинами\n\nЯкщо всі дані вказано правильно, напишіть «Так» або «Підтверджую». Також нагадую, що оригінали документів, які підтверджують поважну причину вашої відсутності (за наявності), необхідно буде надати до адміністрації коледжу особисто.", "selected_template_name": "Заява про складання сесії за індивідуальним графіком", "extracted_data": {"REASON": "сімейними обставинами", "SUBJECT": "Теорія держави та права", "EXAM_DATE": "27.12.2025"}}
+2026-01-14 15:06:50 | INFO | [386442412] 🧠 AI DECISION: {"status": "READY_TO_GENERATE", "bot_reply": "Дякую за підтвердження. Вашу заяву про складання сесії за індивідуальним графіком сформовано та передано в роботу. Нагадую, що оригінали документів, які підтверджують причину неявки, необхідно надати до адміністрації коледжу особисто.", "selected_template_name": "Заява про складання сесії за індивідуальним графіком", "extracted_data": {"STUDENTS_NAME": "Білоус Святослав Олегович", "GROUP": "КІПЗс-25-1", "DISCIPLINE": "Теорія держави та права", "EXAM_DATE": "27.12.2025", "REASON": "за сімейними обставинами"}}
+2026-01-14 15:07:00 | INFO | 📧 Email sent to sviatoslav.bilous@ukd.edu.ua with Заява_Білоус_Святослав_Олегович.pdf
+2026-01-14 15:07:02 | INFO | 📊 Logged to Sheets: Заява про складання сесії за індивідуальним графіком for Білоус Святослав Олегович
+2026-01-14 15:18:29 | INFO | ✅ Google Drive API connected successfully.
+2026-01-14 15:18:29 | INFO | ✅ Google Sheets API connected successfully.
+2026-01-14 15:18:29 | INFO | ✅ Gmail API connected.
+2026-01-14 15:18:30 | INFO | ✅ Gemini AI connected.
+2026-01-14 15:18:30 | INFO | 🤖 Bot Starting...
+2026-01-14 15:18:32 | INFO | ✅ Bot Started.
+2026-01-14 15:18:44 | INFO | [386442412] Spam Counter: 1/10
+2026-01-14 15:18:49 | INFO | [386442412] Silent Auth Success.
+2026-01-14 15:18:50 | ERROR | [386442412] AI Error: Models.generate_content() got an unexpected keyword argument 'response_schema'
+Traceback (most recent call last):
+  File "D:\Files\UKD\Innovations\eCollegeBot\main.py", line 848, in handle_message
+    analysis = brain.analyze_dialog_turn(
+        session['history'],
+    ...<3 lines>...
+        mode=session['mode']  # <--- НОВЕ
+    )
+  File "D:\Files\UKD\Innovations\eCollegeBot\main.py", line 540, in analyze_dialog_turn
+    response = self.client.models.generate_content(
+        model=self.model,
+    ...<2 lines>...
+        response_schema=response_schema
+    )
+TypeError: Models.generate_content() got an unexpected keyword argument 'response_schema'
+2026-01-14 15:21:37 | INFO | ✅ Google Drive API connected successfully.
+2026-01-14 15:21:37 | INFO | ✅ Google Sheets API connected successfully.
+2026-01-14 15:21:37 | INFO | ✅ Gmail API connected.
+2026-01-14 15:21:39 | INFO | ✅ Gemini AI connected.
+2026-01-14 15:21:39 | INFO | 🤖 Bot Starting...
+2026-01-14 15:21:41 | INFO | ✅ Bot Started.
+2026-01-14 15:21:47 | INFO | [386442412] STARTED Interaction.
+2026-01-14 15:21:52 | INFO | [386442412] AUTH SUCCESS via Database.
+2026-01-14 15:22:05 | INFO | [386442412] Spam Counter: 1/10
+2026-01-14 15:22:15 | INFO | [386442412] AI Status: TEMPLATE_SELECTED | Tmpl: Заява про складання сесії за індивідуальним графіком
+2026-01-14 15:23:13 | INFO | [386442412] AI Status: CLARIFICATION_NEEDED | Tmpl: Заява про складання сесії за індивідуальним графіком
+2026-01-14 15:23:34 | INFO | [386442412] AI Status: CLARIFICATION_NEEDED | Tmpl: Заява про складання сесії за індивідуальним графіком
+2026-01-14 15:24:10 | INFO | [386442412] AI Status: WAITING_FOR_CONFIRMATION | Tmpl: Заява про складання сесії за індивідуальним графіком
+2026-01-14 15:24:21 | INFO | [386442412] AI Status: READY_TO_GENERATE | Tmpl: Заява про складання сесії за індивідуальним графіком
+2026-01-14 15:24:34 | INFO | 📧 Email sent to sviatoslav.bilous@ukd.edu.ua with Заява_Білоус_Святослав_Олегович.pdf
+2026-01-14 15:24:35 | INFO | 📊 Logged to Sheets: Заява про складання сесії за індивідуальним графіком for Білоус Святослав Олегович
+2026-01-14 15:24:35 | INFO | [386442412] Email sent to print.
+2026-01-14 15:24:36 | INFO | [386442412] Document Transaction Complete.
+2026-01-14 15:28:25 | INFO | [386442412] STARTED Interaction.
+2026-01-14 15:28:26 | INFO | [386442412] AUTH SUCCESS via Database.
+2026-01-14 15:28:41 | INFO | [386442412] Spam Counter: 1/10
+2026-01-14 15:28:49 | INFO | [386442412] AI Status: TEMPLATE_SELECTED | Tmpl: Заява про складання сесії за індивідуальним графіком
+2026-01-14 15:29:36 | INFO | [386442412] AI Status: CLARIFICATION_NEEDED | Tmpl: Заява про складання сесії за індивідуальним графіком
+2026-01-14 15:29:51 | INFO | [386442412] AI Status: WAITING_FOR_CONFIRMATION | Tmpl: Заява про складання сесії за індивідуальним графіком
+2026-01-14 15:30:03 | INFO | [386442412] AI Status: READY_TO_GENERATE | Tmpl: Заява про складання сесії за індивідуальним графіком
+2026-01-14 15:30:12 | INFO | 📧 Email sent to sviatoslav.bilous@ukd.edu.ua with Заява_Білоус_Святослав_Олегович.pdf
+2026-01-14 15:30:13 | INFO | 📊 Logged to Sheets: Заява про складання сесії за індивідуальним графіком for Білоус Святослав Олегович
+2026-01-14 15:30:13 | INFO | [386442412] Email sent to print.
+2026-01-14 15:30:14 | INFO | [386442412] Document Transaction Complete.
+2026-01-14 15:43:42 | INFO | ✅ Google Drive API connected successfully.
+2026-01-14 15:43:42 | INFO | ✅ Google Sheets API connected successfully.
+2026-01-14 15:43:42 | INFO | ✅ Gmail API connected.
+2026-01-14 15:43:42 | INFO | ✅ Gemini AI connected.
+2026-01-14 15:43:42 | INFO | 🤖 Bot Starting...
+2026-01-14 15:43:44 | INFO | ✅ Bot Started.
+2026-01-14 16:34:22 | INFO | [386442412] Spam Counter: 1/10
+2026-01-14 16:34:25 | INFO | [386442412] Silent Auth Success.
+2026-01-14 16:34:34 | INFO | [386442412] AI Status: TEMPLATE_SELECTED | Tmpl: Заява про складання сесії за індивідуальним графіком
+2026-01-14 16:35:48 | INFO | [386442412] AI Status: CLARIFICATION_NEEDED | Tmpl: Заява про складання сесії за індивідуальним графіком
+2026-01-14 16:36:07 | INFO | [386442412] AI Status: WAITING_FOR_CONFIRMATION | Tmpl: Заява про складання сесії за індивідуальним графіком
+2026-01-14 16:36:27 | INFO | [386442412] AI Status: WAITING_FOR_CONFIRMATION | Tmpl: Заява про складання сесії за індивідуальним графіком
+2026-01-14 16:36:41 | INFO | [386442412] AI Status: READY_TO_GENERATE | Tmpl: Заява про складання сесії за індивідуальним графіком
+2026-01-14 16:36:52 | INFO | 📧 Email sent to sviatoslav.bilous@ukd.edu.ua with Заява_Білоус_Святослав_Олегович.pdf
+2026-01-14 16:36:53 | INFO | 📊 Logged to Sheets: Заява про складання сесії за індивідуальним графіком for Білоус Святослав Олегович
+2026-01-14 16:36:53 | INFO | [386442412] Email sent to print.
+2026-01-14 16:36:54 | INFO | [386442412] Document Transaction Complete.
+2026-01-14 16:41:26 | INFO | [386442412] Spam Counter: 1/10
+2026-01-14 16:41:35 | INFO | [386442412] AI Status: CLARIFICATION_NEEDED | Tmpl: None
+2026-01-14 17:41:28 | INFO | 📊 Logged to Sheets: Session Timeout for Білоус Святослав Олегович
+2026-01-14 17:41:28 | INFO | [386442412] Session Timeout (Cleaned history).
+2026-01-14 18:07:33 | INFO | [386442412] STARTED Interaction.
+2026-01-14 18:07:34 | INFO | [386442412] AUTH SUCCESS via Database.
+2026-01-14 18:08:00 | INFO | [386442412] Spam Counter: 1/10
+2026-01-14 18:08:08 | INFO | [386442412] AI Status: TEMPLATE_SELECTED | Tmpl: Заява про складання сесії за індивідуальним графіком
+2026-01-14 18:09:31 | INFO | [386442412] AI Status: CLARIFICATION_NEEDED | Tmpl: Заява про складання сесії за індивідуальним графіком
+2026-01-14 18:10:00 | INFO | [386442412] AI Status: WAITING_FOR_CONFIRMATION | Tmpl: Заява про складання сесії за індивідуальним графіком
+2026-01-14 18:10:16 | INFO | [386442412] AI Status: READY_TO_GENERATE | Tmpl: Заява про складання сесії за індивідуальним графіком
+2026-01-14 18:10:26 | INFO | 📧 Email sent to sviatoslav.bilous@ukd.edu.ua with Заява_Білоус_Святослав_Олегович.pdf
+2026-01-14 18:10:27 | INFO | 📊 Logged to Sheets: Заява про складання сесії за індивідуальним графіком for Білоус Святослав Олегович
+2026-01-14 18:10:27 | INFO | [386442412] Email sent to print.
+2026-01-14 18:10:27 | INFO | [386442412] Document Transaction Complete.
+2026-01-14 18:11:13 | INFO | ✅ Google Drive API connected successfully.
+2026-01-14 18:11:13 | INFO | ✅ Google Sheets API connected successfully.
+2026-01-14 18:11:13 | INFO | ✅ Gmail API connected.
+2026-01-14 18:11:14 | INFO | ✅ Gemini AI connected.
+2026-01-14 18:11:14 | INFO | 🤖 Bot Starting...
+2026-01-14 18:11:15 | INFO | ✅ Bot Started.
+2026-01-14 18:11:16 | INFO | [386442412] STARTED Interaction.
+2026-01-14 18:11:18 | INFO | [386442412] AUTH SUCCESS via Database.
+2026-01-14 18:11:34 | INFO | [386442412] Spam Counter: 1/10
+2026-01-14 18:11:40 | INFO | [386442412] AI Status: CLARIFICATION_NEEDED | Tmpl: None
+2026-01-14 18:24:40 | INFO | ✅ Google Drive API connected successfully.
+2026-01-14 18:24:40 | INFO | ✅ Google Sheets API connected successfully.
+2026-01-14 18:24:40 | INFO | ✅ Gmail API connected.
+2026-01-14 18:24:40 | INFO | ✅ Gemini AI connected.
+2026-01-14 18:24:40 | INFO | 🤖 Bot Starting...
+2026-01-14 18:24:42 | INFO | ✅ Bot Started.
+2026-01-14 18:24:55 | INFO | [386442412] STARTED Interaction.
+2026-01-14 18:24:57 | INFO | [386442412] AUTH SUCCESS via Database.
+2026-01-14 18:25:30 | INFO | [386442412] Spam Counter: 1/10
+2026-01-14 18:25:32 | INFO | [386442412] 🗣️ USER MESSAGE: "мене не було на іспиті бо я хворів чи можна перездати?"
+2026-01-14 18:25:41 | INFO | [386442412] 🧠 AI DECISION: {"status": "TEMPLATE_SELECTED", "bot_reply": "Зрозумів вас. Для оформлення заяви про складання сесії за індивідуальним графіком у зв'язку з хворобою, мені потрібно уточнити: назви навчальних дисциплін (іспитів), які ви пропустили, та період (дати), за який потрібно скласти сесію. Також нагадую, що оригінал медичної довідки вам необхідно буде надати до канцелярії коледжу особисто.", "selected_template_name": "Заява про складання сесії за індивідуальним графіком", "extracted_data": {"REASON": "у зв'язку з хворобою"}}
+2026-01-14 18:25:41 | INFO | [386442412] AI Status: TEMPLATE_SELECTED | Tmpl: Заява про складання сесії за індивідуальним графіком
+2026-01-14 18:26:55 | INFO | [386442412] 🗣️ USER MESSAGE: "предмети теорія держави і права а також господарський кодекс україни"
+2026-01-14 18:27:02 | INFO | [386442412] 🧠 AI DECISION: {"status": "CLARIFICATION_NEEDED", "bot_reply": "Дякую, предмети записав. Тепер уточніть, будь ласка, період (конкретні дати), на який ви просите встановити індивідуальний графік складання сесії. Також нагадую, що для підтвердження причини пропуску вам необхідно буде надати оригінал медичної довідки до канцелярії коледжу.", "selected_template_name": "Заява про складання сесії за індивідуальним графіком", "extracted_data": {"REASON": "хворобою", "SUBJECTS": "Теорія держави і права, Господарський кодекс України"}}
+2026-01-14 18:27:02 | INFO | [386442412] AI Status: CLARIFICATION_NEEDED | Tmpl: Заява про складання сесії за індивідуальним графіком
+2026-01-14 18:27:12 | INFO | [386442412] 🗣️ USER MESSAGE: "з 12 січня по 19 січня"
+2026-01-14 18:27:22 | INFO | [386442412] 🧠 AI DECISION: {"status": "WAITING_FOR_CONFIRMATION", "bot_reply": "Дякую за інформацію. Перевірте, будь ласка, чи всі дані для формування заяви вказано правильно:\n\n- **ПІБ:** Білоус Святослав Олегович\n- **Група:** КІПЗс-25-1\n- **Спеціальність:** Інженерія програмного забезпечення\n- **Причина:** у зв'язку з хворобою\n- **Дисципліни:** теорія держави і права, господарський кодекс україни\n- **Період сесії:** з 12.01.2026 по 19.01.2026\n\nТакож нагадую, що вам необхідно надати оригінал медичної довідки до канцелярії коледжу для підтвердження поважної причини. Все вірно?", "selected_template_name": "Заява про складання сесії за індивідуальним графіком", "extracted_data": {"REASON": "у зв'язку з хворобою", "SUBJECTS": "теорія держави і права, господарський кодекс україни", "START_DATE": "12.01.2026", "END_DATE": "19.01.2026"}}
+2026-01-14 18:27:22 | INFO | [386442412] AI Status: WAITING_FOR_CONFIRMATION | Tmpl: Заява про складання сесії за індивідуальним графіком
+2026-01-14 18:27:37 | INFO | [386442412] 🗣️ USER MESSAGE: "все супер"
+2026-01-14 18:27:43 | INFO | [386442412] 🧠 AI DECISION: {"status": "READY_TO_GENERATE", "bot_reply": "Дякую за підтвердження. Вашу заяву про складання сесії за індивідуальним графіком сформовано та передано в роботу. Будь ласка, не забудьте надати оригінал медичної довідки до канцелярії коледжу для підтвердження причини відсутності.", "selected_template_name": "Заява про складання сесії за індивідуальним графіком", "extracted_data": {"REASON": "у зв'язку з хворобою", "SUBJECTS": "теорія держави і права, господарський кодекс україни", "START_DATE": "12.01.2026", "END_DATE": "19.01.2026"}}
+2026-01-14 18:27:43 | INFO | [386442412] AI Status: READY_TO_GENERATE | Tmpl: Заява про складання сесії за індивідуальним графіком
+2026-01-14 18:27:54 | INFO | 📧 Email sent to sviatoslav.bilous@ukd.edu.ua with Заява_Білоус_Святослав_Олегович.pdf
+2026-01-14 18:27:55 | INFO | 📊 Logged to Sheets: Заява про складання сесії за індивідуальним графіком for Білоус Святослав Олегович
+2026-01-14 18:27:55 | INFO | [386442412] Email sent to print.
+2026-01-14 18:27:56 | INFO | [386442412] Document Transaction Complete.
