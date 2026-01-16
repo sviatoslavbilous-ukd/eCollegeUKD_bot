@@ -55,8 +55,8 @@ SPECIALTIES_MAP = {
 REQUIRED_FIELDS_MAP = {
     "DATE_OF_BIRTH": "📅 Введіть вашу дату народження (формат ДД.ММ.РРРР):",
     "STUDENTS_PHONE": "📱 Натисніть кнопку знизу, щоб надіслати свій номер телефону:",
-    "PARENTS_NAME": "Введіть ПІБ одного з батьків (для заяв):",
-    "PARENTS_PHONE": "📱 Введіть контактний телефон батьків (вручну):"
+    "PARENTS_NAME": "Введіть ПІБ одного з представників (наприклад, батьків, для заяв):",
+    "PARENTS_PHONE": "📱 Введіть контактний телефон представника (вручну):"
 }
 
 # --- КОНФІГУРАЦІЯ ---
@@ -74,6 +74,223 @@ SCOPES = [
     'https://www.googleapis.com/auth/spreadsheets',  # Змінено на повний доступ для запису ID
     'https://www.googleapis.com/auth/gmail.send'
 ]
+
+UI_MESSAGES = {
+    # 🔴 КРИТИЧНІ ПОМИЛКИ (Система)
+    "google_overload": (
+        "😓 **Сервери Google зараз перевантажені.**\n"
+        "Штучний інтелект бере коротку паузу. Будь ласка, спробуйте повторити запит через 30-60 секунд."
+    ),
+    "google_auth_error": (
+        "🔑 **Проблема авторизації.**\n"
+        "Я втратив доступ до дисків Google. Повідомте адміністратора, що потрібна ре-авторизація."
+    ),
+    "database_error": (
+        "🗄️ **Помилка доступу до бази даних.**\n"
+        "Не вдалося знайти ваші дані в таблиці студентів. Зверніться в 210 кабінет або спробуйте пізніше."
+    ),
+    "unknown_critical_error": (
+        "🛠️ **Виникла технічна несправність.**\n"
+        "Я вже зафіксував цю помилку і передав розробнику. Спробуйте, будь ласка, пізніше."
+    ),
+
+    # 🟠 ВАЛІДАЦІЯ (Користувач робить щось не так)
+    "safety_filter_block": (
+        "🛡️ **Спрацював фільтр безпеки.**\n"
+        "Я не можу обробити цей запит через внутрішні політики контенту. Спробуйте сформулювати інакше."
+    ),
+    "missing_variables": (
+        "✍️ **Не вистачає даних.**\n"
+        "Для формування цього документа мені потрібно уточнити ще кілька деталей. Відповідайте на мої питання по черзі."
+    ),
+    "wrong_date_format": (
+        "📅 **Некоректний формат дати.**\n"
+        "Будь ласка, введіть дату у форматі: `ДД.ММ.РРРР` (наприклад, 15.01.2026)."
+    ),
+    "unknown_intent": (
+        "🤔 **Я не зовсім зрозумів.**\n"
+        "Я поки вчуся. Спробуйте перефразувати або скористайтеся командою /start для вибору дії."
+    ),
+
+    # 🟡 СТАТУСИ ТА РЕЖИМИ
+    "editing_mode_warning": (
+        "✏️ **Режим редагування активний.**\n"
+        "Зараз ми змінюємо ваші дані. Введіть нове значення або натисніть /cancel, щоб скасувати."
+    ),
+    "session_expired": (
+        "zzz **Сесія застаріла.**\n"
+        "Ми довго не спілкувалися, і я втратив контекст. Почнімо спочатку: /start"
+    ),
+    "processing_request": (
+        "⏳ **Обробляю запит...**\n"
+        "Секундочку, формую відповідь."
+    ),
+
+    # 🟢 УСПІХ
+    "doc_generated_success": (
+        "✅ **Документ готовий!**\n"
+        "Перевірте файл. Якщо все добре — роздрукуйте його та підпишіть."
+    ),
+    "data_updated": (
+        "💾 **Дані успішно оновлено.**\n"
+        "Я запам'ятав нову інформацію."
+    ),
+    "welcome_back": (
+        "👋 **З поверненням!**\n"
+        "Радий бачити. Чим можу допомогти сьогодні?"
+    )
+}
+
+TEMPLATE_CONFIG = {
+    "Заява про складання сесії за індивідуальним графіком": {
+        "description": "Перенесення сесії через поважні причини.",
+        "required_fields": ["SUBJECT", "REASON"],
+        # "ignored_fields": ["DATE_FROM", "DATE_TO"] # Для певності можна явно заборонити
+        "nuances": """
+        !!!КОЛИ ОБИРАТИ: Якщо студент пропустив іспит/залік через хворобу, сімейні обставини, змагання тощо.
+        !!!НЮАНСИ: Обов'язково попередити студента, що пізніше треба принести оригінал довідки (лікарняний, виклик на змагання тощо) у 300 кабінет (адміністрація Фахового коледжу).
+        !!!ЩО ВІДПОВІДАТИ: "Ця заява підходить, якщо у вас є документальне підтвердження причини відсутності."
+        """
+    },
+    "Заява про складання навчальної практики за індивідуальним графіком": {
+        "description": "Студент не може складати навчальну практику очно у визначений термін.",
+        "required_fields": ["REASON"],
+        "nuances": """
+        !!!КОЛИ ОБИРАТИ: Якщо студент не зможе складати навчальну практику (повністю або частково) через хворобу, сімейні обставини, змагання тощо.
+        !!!НЮАНСИ: Обов'язково попередити студента, що пізніше треба принести оригінал підтверджувального документа у 300 кабінет (адміністрація Фахового коледжу).
+        !!!ЩО ВІДПОВІДАТИ: "Ця заява підходить, якщо у вас є документальне підтвердження причини відсутності."
+        """
+    },
+    "Заява про повторний курс у дистанційному форматі": {
+        "description": "Студент перебуває за кордоном або за станом здоров'я не може ліквідувати повторний курс.",
+        "required_fields": ["SUBJECT", "REASON"],
+        "nuances": """
+            "Що робити, якщо мені потрібно ліквідувати повторний курс із декількох дисциплін?
+            Для кожної дисципліни, з котрої у Вас є повторний курс, Ви повинні сформувати окрему заяву"        """
+    },
+    "Заява про перевід на іншу спеціальність": {
+        "description": "Студент бажає перевестися на іншу спеціальність.",
+        "required_fields": ["SUBJECT", "SPECIALTY_TO"],
+        "nuances": """
+            "Коли мене буде переведено на іншу спеціальність?
+            Перевід здійснюється з наступного навчального семестру. При цьому, якщо Ви подали заяву про перевід між спеціальностями, до прикладу, 2 вересня - все одно маєте дочекатися наступного семестру"
+
+            "Чи потрібно доплачувати за перевід на іншу спеціальність?
+            Загальний принцип каже, що доплачувати не потрібно - Ви платите за нову спеціальність стільки ж, скільки б заплатили за свою попередню спеціальність без переводу. Однак, не зайвим буде уточнити цю інформацію у бухгалтерії Університету за номером +380ххххххххххх"        """
+    },
+    "Заява про перевід на заочну форму навчання": {
+        "description": "Студент 3-4 курсу бажає перевестися на заочну форму навчання.",
+        "required_fields": ["SPECIALTY"],
+        "nuances": """
+        !!!КОЛИ ОБИРАТИ: Якщо студент має бажання перевестися на заочну форму навчання у рамках своєї спеціальності.
+        !!!НЮАНСИ: Поінформувати щодо дат та вартості переведення. попередити студента, що у нього змінюється код групи: якщо раніше він був, до прикладу, КБс або КБд, то тепер - КБз.
+        !!!ЩО ВІДПОВІДАТИ: "Коли б студент не написав цю заяву - його може бути переведено на іншу спеціальність лише перед початком наступного семестру. Щодо доплати - зазвичай доплачувати за перевід не потрібно, але Ви можете уточнити це у бухгалтерії Університету Короля Данила за номером +380342...."
+        """
+    },
+    "Заява про перевід на денну форму навчання": {
+        "description": "Студент бажає перевестися на денну форму навчання.",
+        "required_fields": ["SPECIALTY"],
+        "nuances": """
+        !!!КОЛИ ОБИРАТИ: Якщо студент пропустив іспит/залік через хворобу, сімейні обставини або змагання.
+        !!!НЮАНСИ: Обов'язково попередити студента, що у нього змінюється код групи: якщо раніше він був, до прикладу, КБз або КБд, то тепер - КБс.
+        !!!ЩО ВІДПОВІДАТИ: "Студента переведуть на денну форму лише починаючи з наступного семестру"
+        """
+    },
+    "Заява про отримання індивідуального графіка навчання": {
+        "description": "Студент бажає отримати індивідуальний графік (не індивідуальну форму, це інше) навчання з певної вагомої причини.",
+        "required_fields": ["SPECIALTY", "REASON"],
+        "nuances": """
+            "Чи можу я не ходити на пари, коли отримаю індивідуальний графік навчання?
+            Так, індивідуальний графік навчання складається суто під Вас та Ваші можливості, що передбачає необов'язковість відвідування академічних пар за тим розкладом, за яким їх відвідують Ваші одногрупники та одногрупниці"        """
+    },
+    "Заява про надання академвідпустки": {
+        "description": "Студент бажає призупинити процес навчання з певної вагомої причини.",
+        "required_fields": ["REASON"],
+        "nuances": """
+            "Чи втрачається бронь від мобілізації при отриманні академвідпустки?
+            При отриманні академвідпустки бронь від мобілізації втрачається."
+
+            "Скільки триває академвідпустка?
+            Академічна відпустка триває один рік, після чого термін її дії автоматично припиняється. Якщо дію академічної відпустки необхідно продовжити - потрібно буде подати ще одну заяву про оформлення відповідної академічної відпустки."
+        """
+    },
+    "Заява про дозвіл пропустити пари в навчальний період": {
+        "description": "Студент знає, що не зможе перебувати (або вже не перебував) на парах упродовж більш, ніж 1 дня, і хоче попередити нас та викладачів про це.",
+        "required_fields": ["DATE_FROM", "DATE_TO", "REASON"],
+        "nuances": """
+            "Що таке підтверджувальний документ?
+            Якщо Ви перетинаєте кордон власним автомобілем або перевізником, і не маєте квитка на міжнародний рейс з України - підтверджуючим документом є скан-копія закордонного паспорта з печаткою про перетин кордону. Якщо ж у Вас є квиток на міжнародний рейс - підтверджуючим документом є копія даного квитка на зазначені Вами дати відсутності на парах. І те, і інше можна або відсканувати самостійно, або принести оригінали нам, щоб зробити копії"
+
+            "Як відпрацьовувати пропущені пари?
+            Після повернення Ви повинні мати при собі копію (можна фото) підписаної та погодженої з директором коледжу заяви, за якою отримали дозвіл пропустити пари, і підходити з нею до кожного із вчителів, що Вас навчають, запитуючи, як Ви можете відпрацювати пропущені заняття. Коли Ви виконаєте те, що кожен із викладачів Вам задасть - пропущені заняття будуть відпрацьовані, а у журналі з'являться відповідні відмітки ("н" або зникнуть, або заміняться на оцінку чи "н/в", що означає "відпрацьовано")
+
+            "Чи можна не відпрацьовувати пари?
+            Ні, пропущені пари обов'язково потрібно відпрацювати"
+
+            "А що, якщо я виїжджаю закордон таким чином, що не встигну відпрацювати пропущені пари по поверненюю?
+            У такому разі Вам потрібно ДО виїзду звернутися до усіх викладачів, що ведуть у Вас пари, і попросити їх надавати завдання Вам на пошту. При цьому, потрібно самостійно написати їм на пошту з проханням отримати ці завдання - таким чином Ви матимете підтвердження, що такі завдання готові були виконувати. При появі таких завдань потрібно виконати їх вчасно і відповідно до запиту викладача - це і буде способом, з допомогою якого Ви зможете відпрацювати свої пропущені пари"        """
+    },
+    "Заява про дозвіл пропустити деякі пари впродовж конкретного дня": {
+        "description": "Студент хоче пропустити одну або декілька пар упродовж лише одного з найближчих днів з певної вагомої причини, і хоче попередити нас та викладачів про це.",
+        "required_fields": ["DATE_FROM", "LESSONS_RANGE", "REASON"],
+        "nuances": """
+            Як відпрацьовувати пропущені пари?
+            Після повернення Ви повинні мати при собі копію (можна фото) підписаної та погодженої з директором коледжу заяви, за якою отримали дозвіл пропустити пари, і підходити з нею до кожного із вчителів, що Вас навчають, запитуючи, як Ви можете відпрацювати пропущені заняття. Коли Ви виконаєте те, що кожен із викладачів Вам задасть - пропущені заняття будуть відпрацьовані, а у журналі з'являться відповідні відмітки ("н" або зникнуть, або заміняться на оцінку чи "н/в", що означає "відпрацьовано")
+
+            Чи можна не відпрацьовувати пари?
+            Ні, пропущені пари обов'язково потрібно відпрацювати        """
+    },
+    "Заява про відрахування за власним бажанням": {
+        "description": "Припинення навчання.",
+        "required_fields": [],
+        "nuances": """
+            "Чи потрібно мені оплачувати щось після того, як мене було відраховано?
+            Якщо Вас відраховано упродовж семестру, за який Ви не внесли оплату - Ви у будь-якому разі повинні внести цю оплату, адже Фаховий коледж надав для Вас освітню послугу у визначений період часу. Суму оплати варто уточнити у бухгалтерії за номером"
+
+            "Чи можу я отримати виписку оцінок за період навчання?
+            Так, таку виписку ми можемо сформувати, для цього потрібно сформувати іншу заяву, і очікувати виписку впродовж робочих 5 днів після подання її до нас та підпису директором Фахового коледжу. Чи готові Ви її сформувати?"
+            """
+    },
+    "Заява про відпрацювання за індивідуальним графіком": {
+        "description": "Студент бажає відпрацьовувати пропущені заняття за певний проміжок часу у зв'язку з певною вагомою причиною, не в очному форматі.",
+        "required_fields": ["REASON"],
+        "nuances": """
+            "Як мені отримати завдання для відпрацювання?
+            Пишіть викладачам на корпоративну пошту (закінчується на @ukd.edu.ua)"
+
+            "Що, якщо я не виконаю ці завдання і не відпрацюю пари за індивідуальним графіком?
+            У такому разі за всі невідпрацьовані семінари (1-4 курс) або пари зі "шкільних" дисциплін (1-2 курс) у Вас у журналі стоятиме "1", а якщо це лекція з фахового предмету на 3 або 4 курсі - при наявності хоча б однієї "н" Вас не буде допущено до іспиту."
+            """
+    },
+    "Заява про отримання виписки оцінок": {
+        "description": "Студент бажає отримати виписку своїх оцінок до завершення навчання у Фаховому коледжі з певної вагомої причини.",
+        "required_fields": ["DATE_FROM", "DATE_TO", "REASON"],
+        "nuances": """
+            "Скільки часу формується виписка оцінок?
+            Виписка оцінок формується упродовж 5 робочих днів з дня прийняття заяви"
+            """
+    },
+    "Заява про перевід на індивідуальну форму навчання": {
+        "description": "Студент бажає перевестися на індивідуальну форму навчання (не індивідуальний графік, це інше).",
+        "required_fields": ["SPECIALTY"],
+        "nuances": """
+        "У чому відмінність індивідуальної форми та індивідуального графіка?
+        Юридично для оформлення індивідуальної форми не потрібно вказувати вагомих причин, що потрібно для індивідуального графіка навчання. Але, вартість індивідуальної форми навчання є вищою, ніж вартість індивідуального графіка, вартість якого не змінюється порівняно з денною формою навчання"
+        """
+    },
+    "Заява про виготовлення студентського квитка": {
+        "description": "Студент хоче отримати студентський квиток, вступивши до коледжу пізніше, ніж відбувся основний здобувачів",
+        "required_fields": [],
+        "nuances": """
+        "Скільки коштує виготовлення студентського квитка?
+        У 2025-2026 навчальному році студентський квиток вартує 150 грн"
+        
+        "Коли буде готовий студентський квиток?
+        Зазвичай виготовлення студентського квитка займає до місяця часу. Коли ми отримаємо його, обов'язково повідомимо Вам про це офіційними каналами зв'язку: корпоративною поштою або чатом у відповідному месенджері"
+        """
+    },
+}
+
 
 # --- НАЛАШТУВАННЯ ЛОГУВАННЯ ---
 # Створюємо папку для логів, якщо немає
@@ -463,7 +680,33 @@ class GeminiBrain:
             "required": ["status", "bot_reply"]
         }
 
-        templates_str = "\n".join([f"- {t['name']}" for t in template_list])
+        templates_info = []
+        for t in template_list:
+            name = t['name']
+            # Отримуємо конфіг або пустий словник, якщо шаблону немає в списку
+            config = TEMPLATE_CONFIG.get(name, {})
+
+            # 1. Формуємо інструкцію по змінних (ЖОРСТКО)
+            req_fields = config.get("required_fields", [])
+            if req_fields:
+                vars_instruction = f"   [STRICT VARIABLES]: You MUST collect ONLY: {', '.join(req_fields)} + standard Profile Data."
+            else:
+                vars_instruction = "   [STRICT VARIABLES]: Collect ONLY standard Profile Data (Name, Group, etc)."
+
+            # 2. Формуємо інструкцію по нюансах (М'ЯКО)
+            nuances = config.get("nuances", "No specific local rules. Use general knowledge.")
+
+            # Збираємо блок
+            info_block = (
+                f"TEMPLATE: '{name}'\n"
+                f"   Description: {config.get('description', '')}\n"
+                f"   COLLEGE RULES & NUANCES: {nuances}\n"
+                f"{vars_instruction}"
+            )
+            templates_info.append(info_block)
+
+        templates_str = "\n".join(templates_info)
+
         current_date_obj = datetime.date.today()
         current_date_str = current_date_obj.strftime("%d.%m.%Y")
 
@@ -486,14 +729,19 @@ class GeminiBrain:
 
         prompt = f"""
         You are the AI Administrator for King Danylo University College Administration. (NO DEANS OFFICE, ONLY COLLEGE ADMINISTRATION)
-        GOAL: Identify request, gather data, output JSON based on the SCHEMA.
+        Identify request, consult the student using COLLEGE RULES, gather data, and output JSON based on the SCHEMA.
+
+        ### ROLE & BEHAVIOR
+        - You are helpful, polite, and professional.
+        - **CONSULTANT MODE:** If the user asks "What should I do?" or "Which application is needed?", use the "ADVICE/FAQ" section from the templates list to guide them.
+        - **CLARIFICATION:** If the user's situation matches a template description, suggest that template.
 
         ### 1. SYSTEM CONTEXT
         - Mode: {mode} (If EDITING -> Only update profile).
         - Date: {current_date_str}
         - Year Base: {academic_year_base}
         - Semester: {current_semester}
-        - Templates:
+        - Available Templates & Knowledge Base:
         {templates_str}
         {focus_instruction}
 
@@ -501,8 +749,8 @@ class GeminiBrain:
         {known_data_str}
 
         ### 3. RULES FOR PROFILE UPDATES
-        If user wants to change info (e.g., "Change group", "New phone"):
-        - ALLOWED: "GROUP", "STUDENTS_PHONE", "PARENTS_PHONE". (Specialty updates automatically via Group, Parents phone has to differ from students phone).
+        If user wants to change info (e.g., "New phone"):
+        - ALLOWED: "STUDENTS_PHONE", "PARENTS_PHONE". (Specialty updates automatically via Group, Parents phone has to differ from students phone).
         - ACTION:
           - If field is allowed and new value provided -> Output `PROFILE_UPDATE` + `extracted_data` (ONE key-value).
           - If value missing -> Output `CLARIFICATION_NEEDED`.
@@ -511,11 +759,11 @@ class GeminiBrain:
         - **STRICT SCHEMA:** You can ONLY output fields defined in the 'extracted_data' schema. Do not invent new fields.
         - **NO FILE UPLOADS:** DO NOT ask the user to upload photos, scans, or documents (medical certs, passports, tickets). 
         - **HANDLING PROOFS:** If a reason implies a document (e.g., "sick leave" -> medical cert, "border crossing" -> passport stamp):
-          - Do NOT ask to see it here.
-          - Accept the user's text explanation.
-          - In `bot_reply`, just REMIND the user to bring the physical original to the college office.
+        - **DO NOT ASK** for dates, periods, or numbers if they are NOT in the "REQUIRED VARIABLES" list for the specific template.          
+        - Accept the user's text explanation.
+        - In `bot_reply`, just REMIND the user to bring the physical original to the college office.
         - **ONLY REQUESTED DATA:** Each template has its own variables. When TEMPLATE_SELECTED, request ONLY including but not already accessible variables - they are written in double curly brackets.  
-        - **REASON:** Concise linguistic construction (e.g., "сімейними обставинами" not "сімейні обставини", "поїздкою за кордон" not "поїздка за кордон" etc).  
+        - **REASON:** Concise linguistic construction (e.g., "сімейними обставинами" not "сімейні обставини", "поїздкою за кордон" not "поїздка за кордон" etc. And NEVER paste "у зв'язку з", because it is already given in the template).  
         - **DATES:** Convert relative dates ("last week", "yesterday") to specific "DD.MM.YYYY".
 
         ### 5. WORKFLOW
@@ -578,19 +826,16 @@ class GeminiBrain:
                 # Перевіряємо, чи це помилка перевантаження (503 або 429)
                 if "503" in error_str or "overloaded" in error_str or "429" in error_str:
                     if is_last_attempt:
-                        logger.error(f"❌ Gemini Failed after {max_retries} attempts: {e}")
-                        return {"status": "CLARIFICATION_NEEDED",
-                                "bot_reply": "Сервер перевантажений. Спробуйте пізніше."}
+                        logger.error(f"❌ Gemini Failed: {e}")
+                        # ВИКОРИСТОВУЄМО НАШ СЛОВНИК:
+                        return {"status": "CLARIFICATION_NEEDED", "bot_reply": UI_MESSAGES["google_overload"]}
 
-                    logger.warning(f"⚠️ Gemini Overloaded (Attempt {attempt + 1}/{max_retries}). Retrying in 2s...")
-                    time.sleep(2)  # Чекаємо 2 секунди перед наступною спробою
+                    time.sleep(2)
                     continue
-
                 else:
-                    # Якщо помилка інша (наприклад, невірний ключ), не мучимо сервер, а падаємо одразу
-                    logger.error(f"❌ AI Brain Critical Error: {e}")
-                    return {"status": "CLARIFICATION_NEEDED", "bot_reply": "Виникла технічна помилка."}
-
+                    logger.error(f"❌ Critical Error: {e}")
+                    # ВИКОРИСТОВУЄМО НАШ СЛОВНИК:
+                    return {"status": "CLARIFICATION_NEEDED", "bot_reply": UI_MESSAGES["unknown_critical_error"]}
 # Ініціалізація
 drive_mgr = DriveManager()
 sheet_mgr = SheetManager(drive_mgr.creds, SPREADSHEET_ID)
@@ -689,6 +934,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if 'missing_fields' not in session: session['missing_fields'] = []
 
     if not text and not update.message.contact:
+
         # Перелік того, на що ми реагуємо попередженням
         if (update.message.voice or update.message.video or update.message.video_note or
                 update.message.audio or update.message.document or update.message.photo or
@@ -742,7 +988,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     "⚠️ Будь ласка, надішліть текстову відповідь або скористайтеся кнопкою.")
                 return
 
-                # 1. Валідація батьківського номера (Анти-Дублікат)
+                # 1. Валідація номера представника (Анти-Дублікат)
             if current_field == "PARENTS_PHONE":
                 student_phone = session['profile'].get('STUDENTS_PHONE', '')
 
@@ -754,7 +1000,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if clean_phone(value_to_save) == clean_phone(student_phone):
                     await update.message.reply_text(
                         "⛔ **Помилка:** Ви ввели свій власний номер.\n"
-                        "Нам потрібен номер когось із батьків для екстреного зв'язку.\n"
+                        "Нам потрібен номер когось із представників для екстреного зв'язку.\n"
                         "Будь ласка, введіть інший номер."
                     )
                     return  # Не зберігаємо, чекаємо нового вводу
@@ -934,7 +1180,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 session['profile'][key] = val
 
                 # Формуємо відповідь
-                ua_names = {"GROUP": "групу", "STUDENTS_PHONE": "телефон", "PARENTS_PHONE": "телефон батьків"}
+                ua_names = {"GROUP": "групу", "STUDENTS_PHONE": "телефон", "PARENTS_PHONE": "телефон представника"}
                 readable_key = ua_names.get(key, key)
 
                 await update.message.reply_text(f"✅ Змінено {readable_key} на: **{val}**{extra_msg}",
@@ -1082,7 +1328,7 @@ def reset_timeout_timer(user_id, chat_id, context):
 async def post_init(application: Application):
     commands = [
         BotCommand("start", "🏠 Головна"),
-        BotCommand("new_doc", "📝 Нова заява"),
+        BotCommand("newdoc", "📝 Нова заява"),
         BotCommand("edit", "✏️ Редагувати дані"),
         BotCommand("cancel", "❌ Скасувати / Назад"),
         BotCommand("help", "ℹ️ Допомога")
@@ -1105,7 +1351,7 @@ async def post_init(application: Application):
     logger.info("✅ Bot Started.")
 
 
-async def new_doc_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def newdoc_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Ця команда просто скидає контекст і пропонує почати
     user_id = str(update.effective_user.id)
     if user_id in user_sessions:
@@ -1144,13 +1390,13 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = (
         "🤖 **Довідка по командам:**\n\n"
         "/start - Почати роботу / Головне меню\n"
-        "/new_doc - Створити нову заяву\n"
+        "/newdoc - Створити нову заяву\n"
         "/edit - Змінити дані (Групу, Номер телефону)\n"
         "/cancel - Скасувати дію або вийти з редагування\n\n"
         "ℹ️ *Як користуватися:*\n"
         "Просто напишіть мені, що вам потрібно (наприклад: *\"Хочу заяву на відрахування\"*). "
         "Я підготую документ, покажу вам ваші дані для перевірки, і якщо все ок — відправлю його на друк.\n\n"
-        "Для отримання допомоги у роботі з ботом - звертайтеся у каб. 300 до Білоуса Святослава Олеговича (@Sviatoslav_Bilous)"
+        "Для отримання допомоги у роботі з ботом - звертайтеся у каб. 300 до Білоуса Святослава Олеговича або на пошту sviatoslav.bilous@ukd.edu.ua"
     )
     await update.message.reply_text(help_text, parse_mode="Markdown")
 
@@ -1197,7 +1443,7 @@ if __name__ == "__main__":
     application = ApplicationBuilder().token(TELEGRAM_TOKEN).post_init(post_init).build()
 
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("new_doc", new_doc_command))
+    application.add_handler(CommandHandler("newdoc", newdoc_command))
     application.add_handler(CommandHandler("edit", edit_command))
     application.add_handler(CommandHandler("cancel", cancel_command))
     application.add_handler(CommandHandler("help", help_command))
@@ -1206,6 +1452,3 @@ if __name__ == "__main__":
     application.add_handler(MessageHandler(filters.ALL & (~filters.COMMAND), handle_message))
 
     application.run_polling()
-
-
-#upd
