@@ -1,12 +1,17 @@
-2026-01-15 11:36:56 | INFO | ✅ Google Drive API connected successfully.
-2026-01-15 11:36:56 | INFO | ✅ Google Sheets API connected successfully.
-2026-01-15 11:36:56 | INFO | ✅ Gmail API connected.
-2026-01-15 11:36:57 | INFO | ✅ Gemini AI connected.
-2026-01-15 11:36:57 | INFO | 🤖 Bot Starting...
-2026-01-15 11:36:58 | INFO | ✅ Bot Started.
-2026-01-15 11:39:03 | INFO | ✅ Google Drive API connected successfully.
-2026-01-15 11:39:03 | INFO | ✅ Google Sheets API connected successfully.
-2026-01-15 11:39:03 | INFO | ✅ Gmail API connected.
-2026-01-15 11:39:03 | INFO | ✅ Gemini AI connected.
-2026-01-15 11:39:03 | INFO | 🤖 Bot Starting...
-2026-01-15 11:39:07 | INFO | ✅ Bot Started.
+2026-02-07 14:00:12 | INFO | ✅ Google Drive API connected successfully.
+2026-02-07 14:00:12 | INFO | ✅ Google Sheets API connected successfully.
+2026-02-07 14:00:12 | INFO | ✅ Gmail API connected.
+2026-02-07 14:00:12 | INFO | ✅ Gemini AI connected.
+2026-02-07 14:00:12 | INFO | 🤖 Bot Starting...
+2026-02-07 14:00:13 | INFO | ✅ Bot Started.
+2026-02-07 14:04:01 | INFO | 💾 Linked Telegram_ID 386442412 to sviatoslav.bilous@ukd.edu.ua
+2026-02-07 14:05:57 | INFO | ✏️ Updated DATE_OF_BIRTH for ID 386442412: 07.02.2002
+2026-02-07 14:15:26 | INFO | ✅ Google Drive API connected successfully.
+2026-02-07 14:15:26 | INFO | ✅ Google Sheets API connected successfully.
+2026-02-07 14:15:26 | INFO | ✅ Gmail API connected.
+2026-02-07 14:15:27 | INFO | ✅ Gemini AI connected.
+2026-02-07 14:15:27 | INFO | 🤖 Bot Starting...
+2026-02-07 14:15:28 | INFO | ✅ Bot Started.
+2026-02-07 14:17:33 | INFO | ✏️ Updated STUDENTS_PHONE for ID 386442412: +380662410348
+2026-02-07 14:17:57 | INFO | ✏️ Updated PARENTS_NAME for ID 386442412: Білоус Олег Михайлович
+2026-02-07 14:18:42 | INFO | ✏️ Updated PARENTS_PHONE for ID 386442412: +380506731062

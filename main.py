@@ -321,6 +321,11 @@ console_handler = logging.StreamHandler()
 console_handler.setFormatter(formatter)
 logger.addHandler(console_handler)
 
+REGEX_DATE = r"^\d{2}\.\d{2}\.\d{4}$"  # Тільки 01.01.2000
+REGEX_PHONE = r"^\+380\d{9}$"  # Тільки +380XXXXXXXXX
+REGEX_FULL_NAME = r"^[\w'’`\-]+\s+[\w'’`\-]+\s+[\w'’`\-]+$"  # Три слова (Прізвище Ім'я По-батькові)
+
+
 
 class DriveManager:
     """Клас для роботи з Google Drive/Docs"""
@@ -865,33 +870,232 @@ def get_specialty_from_group(group_name):
     return None
 
 
+async def validate_input(field_name, text_value, context_data=None):
+    """
+    Сувора валідація даних. Повертає (True, None) або (False, error_message).
+    """
+    text = text_value.strip()
+
+    if field_name == "DATE_OF_BIRTH":
+        if not re.match(REGEX_DATE, text):
+            return False, "⛔ **Невірний формат дати.**\nПотрібно `ДД.ММ.РРРР` (наприклад, 15.01.2005)."
+        try:
+            day, month, year = map(int, text.split('.'))
+            datetime.date(year, month, day)  # Перевірка чи існує така дата
+        except ValueError:
+            return False, "⛔ **Такої дати не існує.** Вкажіть коректну дату."
+
+    elif field_name in ["STUDENTS_PHONE", "PARENTS_PHONE"]:
+        # Якщо користувач ввів без плюса, але це номер - можна б було додати,
+        # але по ТЗ вимагається суворий формат +380...
+        if not re.match(REGEX_PHONE, text):
+            return False, "⛔ **Невірний формат телефону.**\nВкажіть телефон у форматі `+380xxxxxxxxx` (обов'язково з +380)."
+
+        # Специфічна перевірка для батьків: номер не може співпадати з номером студента
+        if field_name == "PARENTS_PHONE" and context_data:
+            student_phone = context_data.get('STUDENTS_PHONE', '')
+            # Очищуємо від зайвих символів для порівняння
+            s_clean = re.sub(r'\D', '', str(student_phone))
+            p_clean = re.sub(r'\D', '', text)
+            if s_clean and s_clean == p_clean:
+                return False, "⛔ **Помилка:** Номер представника співпадає з вашим.\nВведіть саме номер батька/матері/опікуна."
+
+    elif field_name == "PARENTS_NAME":
+        # Перевірка на 3 слова
+        parts = text.split()
+        if len(parts) != 3:
+            return False, "⛔ **Помилка ПІБ.**\nПотрібно ввести рівно 3 слова: Прізвище Ім'я По-батькові."
+        if len(text) < 5:
+            return False, "⛔ **Занадто короткe ім'я.** Введіть повні дані."
+
+        # Перевірка, чи не ввів студент сам себе (якщо ім'я студента відоме)
+        if context_data:
+            student_name = context_data.get('STUDENTS_NAME', '').lower()
+            input_name = text.lower()
+            # Перевіряємо перетин слів (проста евристика)
+            s_parts = set(student_name.split())
+            i_parts = set(input_name.split())
+            if len(s_parts.intersection(i_parts)) >= 2:  # Якщо співпадають хоча б 2 слова (Прізвище та Ім'я)
+                return False, "⛔ **Ви ввели своє ім'я.**\nПотрібно ввести ПІБ батька, матері або опікуна."
+
+    return True, None
+
+
+async def handle_registration(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Керує процесом реєстрації.
+    Для STUDENTS_PHONE вимагає ТІЛЬКИ кнопку.
+    Для інших полів — сувора валідація тексту.
+    """
+    user_id = str(update.effective_user.id)
+    session = user_sessions[user_id]
+
+    # Отримуємо текст (якщо є)
+    text = update.message.text.strip() if update.message.text else ""
+
+    step = session.get('reg_step')
+
+    # --- КРОК 1: ОЧІКУВАННЯ ПОШТИ (Без змін) ---
+    if step == 'WAITING_EMAIL':
+        target_email = text.lower()
+
+        if not target_email.endswith('@ukd.edu.ua'):
+            await update.message.reply_text(
+                "⛔ **Доступ заборонено.**\n"
+                "Система приймає тільки корпоративну пошту `@ukd.edu.ua`.\n"
+                "Введіть коректну пошту:",
+                parse_mode="Markdown"
+            )
+            return
+
+        msg = await update.message.reply_text("🔎 Перевіряю в базі даних...")
+        student = sheet_mgr.get_student_by_email(target_email)
+
+        if not student:
+            await context.bot.edit_message_text(
+                chat_id=update.effective_chat.id,
+                message_id=msg.message_id,
+                text="❌ **Користувача не знайдено.**\nПеревірте пошту або зверніться в деканат."
+            )
+            return
+
+        # Успіх
+        sheet_mgr.link_telegram_id(target_email, user_id)
+        session['profile'] = student
+        await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=msg.message_id)
+
+        missing = check_missing_fields(student)
+        if not missing:
+            session['reg_step'] = 'COMPLETED'
+            await update.message.reply_text(
+                f"✅ **Реєстрація успішна!**\nВітаю, {student.get('STUDENTS_NAME')}.\nТисніть /start.")
+        else:
+            session['reg_step'] = 'WAITING_DATA'
+            session['missing_fields'] = missing
+            next_field = missing[0]
+            await update.message.reply_text(
+                f"👋 Вітаю, {student.get('STUDENTS_NAME')}!\n"
+                "Для завершення налаштування заповніть відсутні дані."
+            )
+            await ask_next_field(update, context, next_field)
+        return
+
+    # --- КРОК 2: ЗБІР ДАНИХ (Оновлено) ---
+    elif step == 'WAITING_DATA':
+        missing = session.get('missing_fields', [])
+        if not missing:
+            session['reg_step'] = 'COMPLETED'
+            return
+
+        current_field = missing[0]
+        value_to_save = None
+
+        # === ЛОГІКА ДЛЯ ТЕЛЕФОНУ СТУДЕНТА (СУВОРО КНОПКА) ===
+        if current_field == "STUDENTS_PHONE":
+            if update.message.contact:
+                # Отримали контакт - все ок
+                phone = update.message.contact.phone_number
+                if not phone.startswith('+'): phone = '+' + phone
+                value_to_save = phone
+            else:
+                # Користувач надіслав текст/стікер/файл замість контакту
+                # 1. Формуємо клавіатуру знову
+                keyboard = [[KeyboardButton("📱 Поділитися номером", request_contact=True)]]
+                markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+
+                # 2. Сваримось і повертаємо кнопку
+                await update.message.reply_text(
+                    "⛔ **Потрібно закінчити процес реєстрації.**\n"
+                    "Для ідентифікації особи потрібно ввести підтверджений номер.\n\n"
+                    "👇 **Натисніть кнопку «📱 Поділитися номером» внизу екрану.**",
+                    reply_markup=markup,  # <--- ПОВЕРТАЄМО КНОПКУ
+                    parse_mode="Markdown"
+                )
+                return  # LOCK: нічого не зберігаємо, чекаємо далі
+
+        # === ЛОГІКА ДЛЯ ІНШИХ ПОЛІВ (ТЕКСТ) ===
+        else:
+            # Для інших полів (дата, телефон батьків) очікуємо текст
+            if not text:
+                await update.message.reply_text("⚠️ Надішліть текстове повідомлення.")
+                return
+
+            # Валідація тексту
+            is_valid, error_msg = await validate_input(current_field, text, session['profile'])
+            if not is_valid:
+                await update.message.reply_text(error_msg, parse_mode="Markdown")
+                return  # LOCK
+
+            value_to_save = text
+
+        # === ЗБЕРЕЖЕННЯ (ЗАГАЛЬНЕ) ===
+        wait_msg = await update.message.reply_text("💾 Записую...", reply_markup=ReplyKeyboardRemove())
+
+        if sheet_mgr.update_student_field(user_id, current_field, value_to_save):
+            session['profile'][current_field] = value_to_save
+            session['missing_fields'].pop(0)
+            await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=wait_msg.message_id)
+
+            if session['missing_fields']:
+                next_field = session['missing_fields'][0]
+                await update.message.reply_text("✅ Прийнято.")
+                await ask_next_field(update, context, next_field)
+            else:
+                session['reg_step'] = 'COMPLETED'
+                await update.message.reply_text(
+                    "🎉 **Дані оновлено!**\nТепер ви маєте повний доступ.\n"
+                    "Підкажіть, чим я можу Вам допомогти?",
+                    reply_markup=ReplyKeyboardRemove(),
+                    parse_mode="Markdown"
+                )
+        else:
+            await update.message.reply_text("❌ Помилка запису. Спробуйте ще раз.")
+        return
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     chat_id = update.effective_chat.id
     reset_timeout_timer(user_id, chat_id, context)
 
-    logger.info(f"[{user_id}] STARTED Interaction.")
-
+    # Ініціалізація сесії
     if user_id not in user_sessions:
         user_sessions[user_id] = {
             'history': [], 'profile': {}, 'active_template': None,
-            'msg_count': 0, 'blocked_until': None
+            'msg_count': 0, 'blocked_until': None,
+            'reg_step': None  # Новий ключ стану
         }
 
-    student = sheet_mgr.get_student_data(user_id)
-    if student:
-        user_sessions[user_id] = {'history': [], 'profile': student, 'active_template': None}
-        logger.info(f"[{user_id}] AUTH SUCCESS via Database.")
-        await update.message.reply_text(f"👋 З поверненням, {student.get('STUDENTS_NAME')}! Радий бачити. Чим можу допомогти?", parse_mode="Markdown")
-        return
+    session = user_sessions[user_id]
 
-    # 3. New
-    user_sessions[user_id] = {'history': [], 'profile': {}, 'active_template': None}
-    logger.info(f"[{user_id}] New User - Requesting Email.")
-    await update.message.reply_text(
-        "👋 Вітаю! Я ШІ-адміністратор Фахового коледжу УКД.\n📧 Для того, щоб я міг надавати Вам послуги, вкажіть Вашу корпоративну пошту (з доменом @ukd.edu.ua) для входу.",
-            parse_mode = "Markdown"
-    )
+    # Спроба "тихої" авторизації, якщо юзер вже є в базі
+    student = sheet_mgr.get_student_data(user_id)
+
+    if student:
+        # Перевіряємо, чи є всі поля, навіть якщо він в базі
+        missing = check_missing_fields(student)
+        if missing:
+            session['profile'] = student
+            session['missing_fields'] = missing
+            session['reg_step'] = 'WAITING_DATA'
+            await update.message.reply_text("⚠️ **Потрібне оновлення даних.**")
+            await ask_next_field(update, context, missing[0])
+        else:
+            session['profile'] = student
+            session['reg_step'] = 'COMPLETED'
+            await update.message.reply_text(f"👋 З поверненням, {student.get('STUDENTS_NAME')}!\nЧим можу допомогти?",
+                                            parse_mode="Markdown")
+    else:
+        # Новий користувач або не знайдений
+        session['reg_step'] = 'WAITING_EMAIL'
+        session['profile'] = {}
+        await update.message.reply_text(
+            "👋 **Вітаю в системі E-College UKD!**\n\n"
+            "🔐 Для початку роботи необхідно авторизуватися.\n"
+            "Введіть вашу **корпоративну пошту** (формат: `mail@ukd.edu.ua`):",
+            parse_mode="Markdown",
+            reply_markup=ReplyKeyboardRemove()
+        )
 
 
 async def ask_next_field(update, context, field):
@@ -932,6 +1136,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             'missing_fields': []
         }
     session = user_sessions[user_id]
+
+    if session.get('reg_step') != 'COMPLETED':
+        await handle_registration(update, context)
+        return
 
     # === БЛОК БЕЗПЕКИ (ДОДАНО) ===
     # Гарантує, що нові змінні існують, навіть якщо сесія створена давно
@@ -996,21 +1204,54 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
 
                 # 1. Валідація номера представника (Анти-Дублікат)
+            if current_field == "PARENTS_NAME":
+                student_name = session['profile'].get('STUDENTS_NAME', "")
+
+                # Нормалізація: переводимо в нижній регістр і розбиваємо на множину слів
+                # Це дозволяє зрозуміти, що "Іванов Іван" == "Іван Іванов"
+                s_parts = set(student_name.lower().split())
+                p_parts = set(str(value_to_save).lower().split())
+
+                # Перевірка:
+                # 1. Якщо набори слів ідентичні (студент ввів себе)
+                # 2. Якщо введено менше 2 слів (наприклад, тільки прізвище або ім'я)
+                if s_parts == p_parts:
+                    await update.message.reply_text(
+                        "⛔ **Помилка:** Ви ввели власне ім'я.\n"
+                        "Необхідно вказати ПІБ одного з батьків (або опікунів).\n"
+                        "Будь ласка, введіть коректні дані."
+                    )
+                    return  # Зупиняємо, не зберігаємо
+
+                if len(p_parts) < 2:
+                    await update.message.reply_text(
+                        "⚠️ **Уточнення:** Будь ласка, введіть повне ПІБ (прізвище, ім'я, та по-батькові).\n"
+                        "Наприклад: *Шевченко Андрій Миколайович*"
+                    )
+                    return
+
+                # 2. ПЕРЕВІРКА ТЕЛЕФОНУ (PARENTS_PHONE)
             if current_field == "PARENTS_PHONE":
-                student_phone = session['profile'].get('STUDENTS_PHONE', '')
+                student_phone = session['profile'].get('STUDENTS_PHONE') or session['profile'].get('Phone') or ""
 
-                    # Функція для очистки номера (залишає тільки цифри)
-                def clean_phone(p):
-                    return re.sub(r'\D', '', str(p))
+                def get_significant_digits(phone_raw):
+                    """Залишає тільки 9 останніх цифр (без коду країни 380)"""
+                    clean = re.sub(r'\D', '', str(phone_raw))  # Тільки цифри
+                    return clean[-9:] if len(clean) >= 9 else clean
 
-                    # Порівнюємо "чисті" цифри
-                if clean_phone(value_to_save) == clean_phone(student_phone):
+                s_digits = get_significant_digits(student_phone)
+                p_digits = get_significant_digits(value_to_save)
+
+                # Логуємо для перевірки (можна прибрати потім)
+                logger.info(f"[{user_id}] Comparing Phones: Student({s_digits}) vs Parent({p_digits})")
+
+                if s_digits and s_digits == p_digits:
                     await update.message.reply_text(
                         "⛔ **Помилка:** Ви ввели свій власний номер.\n"
                         "Нам потрібен номер когось із представників для екстреного зв'язку.\n"
-                        "Будь ласка, введіть інший номер."
+                        "Будь ласка, введіть інший номер (батька, матері або опікуна)."
                     )
-                    return  # Не зберігаємо, чекаємо нового вводу
+                    return  # Зупиняємо
 
                 # 2. Валідація Дати (Базова перевірка формату)
             if current_field == "DATE_OF_BIRTH":
