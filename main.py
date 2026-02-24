@@ -71,7 +71,7 @@ GEMINI_AI_MODEL = os.getenv("GEMINI_AI_MODEL")
 SCOPES = [
     'https://www.googleapis.com/auth/drive',
     'https://www.googleapis.com/auth/documents',
-    'https://www.googleapis.com/auth/spreadsheets',  # Змінено на повний доступ для запису ID
+    'https://www.googleapis.com/auth/spreadsheets', 
     'https://www.googleapis.com/auth/gmail.send'
 ]
 
@@ -289,7 +289,6 @@ TEMPLATE_CONFIG = {
     "Заява про складання сесії за індивідуальним графіком": {
         "description": "Перенесення сесії через поважні причини.",
         "required_fields": ["SUBJECT", "REASON"],
-        # "ignored_fields": ["DATE_FROM", "DATE_TO"] # Для певності можна явно заборонити
         "nuances": """
         !!!КОЛИ ОБИРАТИ: Якщо студент пропустив іспит/залік через хворобу, сімейні обставини, змагання тощо.
         !!!НЮАНСИ: Обов'язково попередити студента, що пізніше треба принести оригінал довідки (лікарняний, виклик на змагання тощо) у 300 кабінет (адміністрація Фахового коледжу).
@@ -504,7 +503,6 @@ class SheetManager:
             headers = [h.strip() for h in rows[0]]
 
             try:
-                # Шукаємо індекси (більш гнучкий пошук)
                 email_col_idx = next(
                     i for i, h in enumerate(headers) if h.lower() in ['email', 'пошта', 'students_email'])
                 tg_col_idx = next(i for i, h in enumerate(headers) if h == 'Telegram_ID')
@@ -524,7 +522,7 @@ class SheetManager:
 
             if row_number == -1: return False
 
-            col_letter = chr(ord('A') + tg_col_idx)  # Працює для колонок A-Z
+            col_letter = chr(ord('A') + tg_col_idx)
             cell_range = f"Students!{col_letter}{row_number}"
 
             body = {'values': [[str(telegram_id)]]}
