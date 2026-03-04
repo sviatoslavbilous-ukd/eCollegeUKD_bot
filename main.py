@@ -1,20 +1,41 @@
-import time
+"""
+eCollege UKD Telegram Bot
+
+Архітектура:
+  - StudentFields / SessionKeys / SheetConfig  — єдині джерела правди для всіх імен колонок і ключів
+  - SchemaManager   — завантажує та кешує схему таблиці (заголовки → індекси)
+  - SheetManager    — CRUD для Google Sheets, жодних хардкоджених індексів
+  - DriveManager    — робота з Google Drive / Docs
+  - EmailManager    — відправка через Gmail
+  - GeminiBrain     — взаємодія з Gemini API
+  - RegistrationFSM — скінченний автомат реєстрації
+  - BotHandlers     — обробники команд і повідомлень
+"""
+
+# ── Стандартна бібліотека ────────────────────────────────────────────────────
+import io
 import re
 import os
-import io
 import json
+import time
+import base64
 import logging
 import datetime
-import base64
+from dataclasses import dataclass, field
 from datetime import timedelta
+from enum import Enum, auto
 from logging.handlers import TimedRotatingFileHandler
+from typing import Any, Dict, List, Optional
+
+# ── Зовнішні залежності ──────────────────────────────────────────────────────
 from dotenv import load_dotenv
 
-# Telegram Imports
 from telegram import Update, BotCommand, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
-from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters, Application
+from telegram.ext import (
+    ApplicationBuilder, ContextTypes, CommandHandler,
+    MessageHandler, filters, Application,
+)
 
-# Google Imports
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -23,1678 +44,1510 @@ from google.genai import types
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 
-# Email Imports
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
 
-# Завантаження змінних
+# ════════════════════════════════════════════════════════════════════════════════
+# 1.  КОНФІГУРАЦІЯ ТА КОНСТАНТИ
+# ════════════════════════════════════════════════════════════════════════════════
+
 load_dotenv()
 
-# Словник спеціальностей
-SPECIALTIES_MAP = {
-    "А": "Архітектура та містобудування",
-    "Б": "Будівництво та цивільна інженерія",
-    "ГРС": "Готельно-ресторанна справа та кейтеринг",
-    "ДІ": "Дизайн інтер'єру",
-    "Д": "Графічний дизайн",
-    "ЕІ": "Електрична інженерія",
-    "ІПЗ": "Інженерія програмного забезпечення",
-    "Мн": "Менеджмент",
-    "Мр": "Маркетинг",
-    "М": "Музичне мистецтво",
-    "О": "Облік та оподатування",
-    "ПД": "Правоохоронна діяльність",
-    "СМ": "Сценічне мистецтво",
-    "Т": "Туризм і рекреація",
-    "Ф": "Фінанси, банківська справа та страхування",
-    "Х": "Хореографія",
-    "Ю": "Юридичне діловодство і секретарська справа"
-}
 
-REQUIRED_FIELDS_MAP = {
-    "DATE_OF_BIRTH": "📅 Введіть вашу дату народження (формат ДД.ММ.РРРР):",
-    "STUDENTS_PHONE": "📱 Натисніть кнопку знизу, щоб надіслати свій номер телефону:",
-    "PARENTS_NAME": "Введіть ПІБ одного з представників (наприклад, батьків, для заяв):",
-    "PARENTS_PHONE": "📱 Введіть контактний телефон представника (вручну):"
-}
+class Env:
+    """Усі змінні середовища в одному місці."""
+    CLIENT_SECRET_FILE  = os.getenv("CLIENT_SECRET_FILE")
+    TEMPLATES_FOLDER_ID = os.getenv("TEMPLATES_FOLDER_ID")
+    SPREADSHEET_ID      = os.getenv("SPREADSHEET_ID")
+    TARGET_PRINT_EMAIL  = os.getenv("TARGET_PRINT_EMAIL")
+    TELEGRAM_TOKEN      = os.getenv("TELEGRAM_TOKEN")
+    GEMINI_API_KEY      = os.getenv("GEMINI_API_KEY")
+    GEMINI_AI_MODEL     = os.getenv("GEMINI_AI_MODEL", "gemini-2.0-flash")
+    ADMIN_ID            = os.getenv("ADMIN_ID")           # Telegram ID розробника
+    ADMIN_EMAIL         = os.getenv("ADMIN_EMAIL")        # Пошта розробника (опційно)
+    MODE                = os.getenv("MODE", "PROD")
+    # Мінімальний інтервал між сповіщеннями про невідомий запит від одного юзера (хвилини)
+    UNKNOWN_NOTIF_COOLDOWN_MIN: int = int(os.getenv("UNKNOWN_NOTIF_COOLDOWN_MIN", "30"))
 
-# --- КОНФІГУРАЦІЯ ---
-CLIENT_SECRET_FILE = os.getenv("CLIENT_SECRET_FILE")
-TEMPLATES_FOLDER_ID = os.getenv("TEMPLATES_FOLDER_ID")
-SPREADSHEET_ID = os.getenv("SPREADSHEET_ID")
-TARGET_PRINT_EMAIL = os.getenv("TARGET_PRINT_EMAIL")
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-GEMINI_AI_MODEL = os.getenv("GEMINI_AI_MODEL")
 
-SCOPES = [
-    'https://www.googleapis.com/auth/drive',
-    'https://www.googleapis.com/auth/documents',
-    'https://www.googleapis.com/auth/spreadsheets', 
-    'https://www.googleapis.com/auth/gmail.send'
+GOOGLE_SCOPES = [
+    "https://www.googleapis.com/auth/drive",
+    "https://www.googleapis.com/auth/documents",
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/gmail.send",
 ]
 
-UI_MESSAGES = {
-    # 🔴 КРИТИЧНІ ПОМИЛКИ (Система)
-    "google_overload": (
+
+# ── Назви аркушів ────────────────────────────────────────────────────────────
+class SheetName:
+    STUDENTS      = "Students"
+    CONFIG        = "Config"
+    LOGS          = "Logs"
+    JOURNAL_LINKS = "Journal_Links"
+    CHANGE_LOG    = "Change_Log"
+
+
+# ── Назви колонок таблиці Students ──────────────────────────────────────────
+class Col:
+    """
+    Єдине джерело правди для назв колонок у Students.
+    Щоб перейменувати колонку — змінити рядок тут і більше ніде.
+    """
+    TELEGRAM_ID         = "TELEGRAM_ID"
+    PARENTS_TELEGRAM_ID = "PARENTS_TELEGRAM_ID"
+    EMAIL               = "STUDENTS_EMAIL"
+    NAME                = "STUDENTS_NAME"
+    GROUP               = "GROUP"
+    BIRTH_DATE          = "BIRTH_DATE"
+    PARENTS_NAME        = "PARENTS_NAME"
+    APPLICATION_BASIS   = "APPLICATION_BASIS"
+    SPECIALTY           = "SPECIALTY"
+    STUDY_FORM          = "STUDY_FORM"
+    STUDY_YEAR          = "STUDY_YEAR"
+    STUDENTS_PHONE      = "STUDENTS_PHONE"
+    PARENTS_PHONE       = "PARENTS_PHONE"
+    SOCIAL_BENEFITS     = "SOCIAL_BENEFITS"
+    WHO_RECOMMENDED     = "WHO_RECOMMENDED"
+    IS_GROUP_LEADER     = "IS_GROUP_LEADER"
+    IS_STUDCOUNCIL      = "IS_STUDCOUNCIL_MEMBER"
+    TO_PAY              = "TO_PAY"
+    ABSENCE_TIMES       = "ABSENCE_TIMES"
+
+    # Поля, які дозволено редагувати через /edit
+    EDITABLE: tuple = (STUDENTS_PHONE, PARENTS_PHONE, GROUP)
+
+
+# ── Поля профілю, що збираються під час онбордингу ──────────────────────────
+# Порядок важливий — саме в такому порядку ставляться питання.
+ONBOARDING_FIELDS: List[Dict[str, Any]] = [
+    {
+        "col":      Col.BIRTH_DATE,
+        "prompt":   "📅 Введіть вашу дату народження (формат ДД.ММ.РРРР):",
+        "use_button": False,
+    },
+    {
+        "col":      Col.STUDENTS_PHONE,
+        "prompt":   "📱 Натисніть кнопку нижче, щоб поділитися номером телефону:",
+        "use_button": True,
+    },
+    {
+        "col":      Col.PARENTS_NAME,
+        "prompt":   "👤 Введіть ПІБ одного з представників (батьків / опікуна):",
+        "use_button": False,
+    },
+    {
+        "col":      Col.PARENTS_PHONE,
+        "prompt":   "📱 Введіть контактний телефон представника (вручну, формат +380...):",
+        "use_button": False,
+    },
+]
+
+# Швидкий доступ: col → prompt
+FIELD_PROMPT: Dict[str, str] = {f["col"]: f["prompt"] for f in ONBOARDING_FIELDS}
+
+
+# ── Регулярні вирази ─────────────────────────────────────────────────────────
+class Regex:
+    DATE  = re.compile(r"^\d{2}\.\d{2}\.\d{4}$")
+    PHONE = re.compile(r"^\+380\d{9}$")
+
+
+# ── Ключі сесії ─────────────────────────────────────────────────────────────
+class SK:
+    HISTORY              = "history"
+    PROFILE              = "profile"
+    ACTIVE_TEMPLATE      = "active_template"
+    MSG_COUNT            = "msg_count"
+    BLOCKED_UNTIL        = "blocked_until"
+    MODE                 = "mode"
+    REG_STEP             = "reg_step"
+    MISSING_FIELDS       = "missing_fields"
+    LAST_UNKNOWN_NOTIF   = "last_unknown_notif"   # datetime останнього сповіщення розробника
+
+
+class RegStep(str, Enum):
+    WAITING_EMAIL = "WAITING_EMAIL"
+    WAITING_DATA  = "WAITING_DATA"
+    COMPLETED     = "COMPLETED"
+
+
+class BotMode(str, Enum):
+    NORMAL   = "NORMAL"
+    EDITING  = "EDITING"
+    ONBOARDING = "ONBOARDING"
+
+
+# ── UI-повідомлення ──────────────────────────────────────────────────────────
+class UI:
+    GOOGLE_OVERLOAD = (
         "😓 **Сервери Google зараз перевантажені.**\n"
-        "Штучний інтелект бере коротку паузу. Будь ласка, спробуйте повторити запит через 30-60 секунд."
-    ),
-    "google_auth_error": (
-        "🔑 **Проблема авторизації.**\n"
-        "Я втратив доступ до дисків Google. Повідомте адміністратора, що потрібна ре-авторизація."
-    ),
-    "database_error": (
-        "🗄️ **Помилка доступу до бази даних.**\n"
-        "Не вдалося знайти ваші дані в таблиці студентів. Зверніться в 210 кабінет або спробуйте пізніше."
-    ),
-    "unknown_critical_error": (
-        "🛠️ **Виникла технічна несправність.**\n"
-        "Я вже зафіксував цю помилку і передав розробнику. Спробуйте, будь ласка, пізніше."
-    ),
-
-    # 🟠 ВАЛІДАЦІЯ (Користувач робить щось не так)
-    "safety_filter_block": (
-        "🛡️ **Спрацював фільтр безпеки.**\n"
-        "Я не можу обробити цей запит через внутрішні політики контенту. Спробуйте сформулювати інакше."
-    ),
-    "missing_variables": (
-        "✍️ **Не вистачає даних.**\n"
-        "Для формування цього документа мені потрібно уточнити ще кілька деталей. Відповідайте на мої питання по черзі."
-    ),
-    "wrong_date_format": (
-        "📅 **Некоректний формат дати.**\n"
-        "Будь ласка, введіть дату у форматі: `ДД.ММ.РРРР` (наприклад, 15.01.2026)."
-    ),
-    "unknown_intent": (
-        "🤔 **Я не зовсім зрозумів.**\n"
-        "Я поки вчуся. Спробуйте перефразувати або скористайтеся командою /start для вибору дії."
-    ),
-
-    # 🟡 СТАТУСИ ТА РЕЖИМИ
-    "editing_mode_warning": (
-        "✏️ **Режим редагування активний.**\n"
-        "Зараз ми змінюємо ваші дані. Введіть нове значення або натисніть /cancel, щоб скасувати."
-    ),
-    "session_expired": (
-        "zzz **Сесія застаріла.**\n"
-        "Ми довго не спілкувалися, і я втратив контекст. Почнімо спочатку: /start"
-    ),
-    "processing_request": (
-        "⏳ **Обробляю запит...**\n"
-        "Секундочку, формую відповідь."
-    ),
-
-    # 🟢 УСПІХ
-    "doc_generated_success": (
-        "✅ **Документ готовий!**\n"
-        "Перевірте файл. Якщо все добре — роздрукуйте його та підпишіть."
-    ),
-    "data_updated": (
-        "💾 **Дані успішно оновлено.**\n"
-        "Я запам'ятав нову інформацію."
-    ),
-    "welcome_back": (
-        "👋 **З поверненням!**\n"
-        "Радий бачити. Чим можу допомогти сьогодні?"
+        "Спробуйте повторити запит через 30–60 секунд."
     )
-}
+    UNKNOWN_ERROR = (
+        "🛠️ **Виникла технічна несправність.**\n"
+        "Помилку зафіксовано. Спробуйте, будь ласка, пізніше."
+    )
+    SAFETY_BLOCK = (
+        "🛡️ **Спрацював фільтр безпеки.**\n"
+        "Спробуйте сформулювати запит інакше."
+    )
+    NOT_UNDERSTOOD = (
+        "🤔 **Я не зовсім зрозумів.**\n"
+        "Спробуйте перефразувати або скористайтеся /start."
+    )
+    NON_TEXT = (
+        "⚠️ **Наразі я — текстовий бот.**\n"
+        "Надсилайте, будь ласка, лише текстові повідомлення ✍️"
+    )
+    SESSION_EXPIRED = (
+        "⏳ **Сесію завершено через неактивність (60 хв).**\n"
+        "Щоб створити нову заяву — просто напишіть запит знову."
+    )
+    SPAM_BLOCK = (
+        "⛔ **Система визначила вашу поведінку як спам.**\n\n"
+        "Надіслано занадто багато повідомлень без конкретної мети.\n"
+        "⏳ Бот тимчасово заблокований для вас на 1 годину.\n"
+        "Якщо є термінове питання — зверніться до адміністрації коледжу."
+    )
+    UNKNOWN_INTENT = (
+        "🤔 **Я поки не вмію це робити.**\n\n"
+        "Але я вже передав ваш запит розробнику — він врахує це при наступних оновленнях.\n"
+        "Якщо питання термінове — зверніться до адміністрації коледжу (каб. 300)."
+    )
 
-TEMPLATE_CONFIG = {
-    "Заява про виготовлення студентського квитка": {
-        "description": "Студент хоче отримати студентський квиток, вступивши до коледжу пізніше, ніж відбувся основний здобувачів",
-        "required_fields": [],
-        "nuances": """
-    "Скільки коштує виготовлення студентського квитка?
-    У 2025-2026 навчальному році студентський квиток вартує 150 грн"
 
-    "Коли буде готовий студентський квиток?
-    Зазвичай виготовлення студентського квитка займає до місяця часу. Коли ми отримаємо його, обов'язково повідомимо Вам про це офіційними каналами зв'язку: корпоративною поштою або чатом у відповідному месенджері"
+# ════════════════════════════════════════════════════════════════════════════════
+# 2.  НАЛАШТУВАННЯ ЛОГУВАННЯ
+# ════════════════════════════════════════════════════════════════════════════════
+
+def _build_logger() -> logging.Logger:
+    os.makedirs("logs", exist_ok=True)
+    fmt = logging.Formatter(
+        "%(asctime)s | %(levelname)-8s | %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+    log = logging.getLogger("eCollegeBot")
+    log.setLevel(logging.INFO)
+
+    fh = TimedRotatingFileHandler(
+        "logs/bot_history.log", when="midnight", backupCount=30, encoding="utf-8"
+    )
+    fh.setFormatter(fmt)
+    log.addHandler(fh)
+
+    ch = logging.StreamHandler()
+    ch.setFormatter(fmt)
+    log.addHandler(ch)
+    return log
+
+
+logger = _build_logger()
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# 3.  ВАЛІДАЦІЯ
+# ════════════════════════════════════════════════════════════════════════════════
+
+def validate_field(
+    col: str,
+    raw: str,
+    profile: Optional[Dict[str, Any]] = None,
+) -> tuple[bool, Optional[str]]:
     """
-    },
-    "Заява про відпрацювання за індивідуальним графіком": {
-        "description": "Студент бажає відпрацьовувати пропущені заняття за певний проміжок часу у зв'язку з певною вагомою причиною, не в очному форматі.",
-        "required_fields": ["REASON"],
-        "nuances": """
-        "Як мені отримати завдання для відпрацювання?
-        Пишіть викладачам на корпоративну пошту (закінчується на @ukd.edu.ua)"
-
-        "Що, якщо я не виконаю ці завдання і не відпрацюю пари за індивідуальним графіком?
-        У такому разі за всі невідпрацьовані семінари (1-4 курс) або пари зі "шкільних" дисциплін (1-2 курс) у Вас у журналі стоятиме "1", а якщо це лекція з фахового предмету на 3 або 4 курсі - при наявності хоча б однієї "н" Вас не буде допущено до іспиту."
-        """
-    },
-    "Заява про відрахування за власним бажанням": {
-        "description": "Припинення навчання.",
-        "required_fields": [],
-        "nuances": """
-        "Чи потрібно мені оплачувати щось після того, як мене було відраховано?
-        Якщо Вас відраховано упродовж семестру, за який Ви не внесли оплату - Ви у будь-якому разі повинні внести цю оплату, адже Фаховий коледж надав для Вас освітню послугу у визначений період часу. Суму оплати варто уточнити у бухгалтерії за номером"
-
-        "Чи можу я отримати виписку оцінок за період навчання?
-        Так, таку виписку ми можемо сформувати, для цього потрібно сформувати іншу заяву, і очікувати виписку впродовж робочих 5 днів після подання її до нас та підпису директором Фахового коледжу. Чи готові Ви її сформувати?"
-        """
-    },
-    "Заява про дозвіл пропустити деякі пари впродовж конкретного дня": {
-        "description": "Студент хоче пропустити одну або декілька пар упродовж лише одного з найближчих днів з певної вагомої причини, і хоче попередити нас та викладачів про це.",
-        "required_fields": ["DATE_FROM", "LESSONS_RANGE", "REASON"],
-        "nuances": """
-        Як відпрацьовувати пропущені пари?
-        Після повернення Ви повинні мати при собі копію (можна фото) підписаної та погодженої з директором коледжу заяви, за якою отримали дозвіл пропустити пари, і підходити з нею до кожного із вчителів, що Вас навчають, запитуючи, як Ви можете відпрацювати пропущені заняття. Коли Ви виконаєте те, що кожен із викладачів Вам задасть - пропущені заняття будуть відпрацьовані, а у журналі з'являться відповідні відмітки ("н" або зникнуть, або заміняться на оцінку чи "н/в", що означає "відпрацьовано")
-
-        Чи можна не відпрацьовувати пари?
-        Ні, пропущені пари обов'язково потрібно відпрацювати        """
-    },
-    "Заява про дозвіл пропустити пари в навчальний період": {
-        "description": "Студент знає, що не зможе перебувати (або вже не перебував) на парах упродовж більш, ніж 1 дня, і хоче попередити нас та викладачів про це.",
-        "required_fields": ["DATE_FROM", "DATE_TO", "REASON"],
-        "nuances": """
-        "Що таке підтверджувальний документ?
-        Якщо Ви перетинаєте кордон власним автомобілем або перевізником, і не маєте квитка на міжнародний рейс з України - підтверджуючим документом є скан-копія закордонного паспорта з печаткою про перетин кордону. Якщо ж у Вас є квиток на міжнародний рейс - підтверджуючим документом є копія даного квитка на зазначені Вами дати відсутності на парах. І те, і інше можна або відсканувати самостійно, або принести оригінали нам, щоб зробити копії"
-
-        "Як відпрацьовувати пропущені пари?
-        Після повернення Ви повинні мати при собі копію (можна фото) підписаної та погодженої з директором коледжу заяви, за якою отримали дозвіл пропустити пари, і підходити з нею до кожного із вчителів, що Вас навчають, запитуючи, як Ви можете відпрацювати пропущені заняття. Коли Ви виконаєте те, що кожен із викладачів Вам задасть - пропущені заняття будуть відпрацьовані, а у журналі з'являться відповідні відмітки ("н" або зникнуть, або заміняться на оцінку чи "н/в", що означає "відпрацьовано")
-
-        "Чи можна не відпрацьовувати пари?
-        Ні, пропущені пари обов'язково потрібно відпрацювати"
-
-        "А що, якщо я виїжджаю закордон таким чином, що не встигну відпрацювати пропущені пари по поверненюю?
-        У такому разі Вам потрібно ДО виїзду звернутися до усіх викладачів, що ведуть у Вас пари, і попросити їх надавати завдання Вам на пошту. При цьому, потрібно самостійно написати їм на пошту з проханням отримати ці завдання - таким чином Ви матимете підтвердження, що такі завдання готові були виконувати. При появі таких завдань потрібно виконати їх вчасно і відповідно до запиту викладача - це і буде способом, з допомогою якого Ви зможете відпрацювати свої пропущені пари"        """
-    },
-    "Заява про надання академвідпустки": {
-        "description": "Студент бажає призупинити процес навчання з певної вагомої причини.",
-        "required_fields": ["REASON"],
-        "nuances": """
-        "Чи втрачається бронь від мобілізації при отриманні академвідпустки?
-        При отриманні академвідпустки бронь від мобілізації втрачається."
-
-        "Скільки триває академвідпустка?
-        Академічна відпустка триває один рік, після чого термін її дії автоматично припиняється. Якщо дію академічної відпустки необхідно продовжити - потрібно буде подати ще одну заяву про оформлення відповідної академічної відпустки."
+    Повертає (True, None) або (False, повідомлення про помилку).
+    profile використовується для перехресних перевірок (напр. телефон батьків ≠ телефон студента).
     """
-    },
-    "Заява про отримання виписки оцінок": {
-        "description": "Студент бажає отримати виписку своїх оцінок до завершення навчання у Фаховому коледжі з певної вагомої причини.",
-        "required_fields": ["DATE_FROM", "DATE_TO", "REASON"],
-        "nuances": """
-        "Скільки часу формується виписка оцінок?
-        Виписка оцінок формується упродовж 5 робочих днів з дня прийняття заяви"
-        """
-    },
-    "Заява про отримання індивідуального графіка навчання": {
-        "description": "Студент бажає отримати індивідуальний графік (не індивідуальну форму, це інше) навчання з певної вагомої причини.",
-        "required_fields": ["SPECIALTY", "REASON"],
-        "nuances": """
-        "Чи можу я не ходити на пари, коли отримаю індивідуальний графік навчання?
-        Так, індивідуальний графік навчання складається суто під Вас та Ваші можливості, що передбачає необов'язковість відвідування академічних пар за тим розкладом, за яким їх відвідують Ваші одногрупники та одногрупниці"        """
-    },
-    "Заява про перевід на денну форму навчання": {
-        "description": "Студент бажає перевестися на денну форму навчання.",
-        "required_fields": ["SPECIALTY"],
-        "nuances": """
-    !!!КОЛИ ОБИРАТИ: Якщо студент пропустив іспит/залік через хворобу, сімейні обставини або змагання.
-    !!!НЮАНСИ: Обов'язково попередити студента, що у нього змінюється код групи: якщо раніше він був, до прикладу, КБз або КБд, то тепер - КБс.
-    !!!ЩО ВІДПОВІДАТИ: "Студента переведуть на денну форму лише починаючи з наступного семестру"
-    """
-    },
-    "Заява про перевід на заочну форму навчання": {
-        "description": "Студент 3-4 курсу бажає перевестися на заочну форму навчання.",
-        "required_fields": ["SPECIALTY"],
-        "nuances": """
-    !!!КОЛИ ОБИРАТИ: Якщо студент має бажання перевестися на заочну форму навчання у рамках своєї спеціальності.
-    !!!НЮАНСИ: Поінформувати щодо дат та вартості переведення. попередити студента, що у нього змінюється код групи: якщо раніше він був, до прикладу, КБс або КБд, то тепер - КБз.
-    !!!ЩО ВІДПОВІДАТИ: "Коли б студент не написав цю заяву - його може бути переведено на іншу спеціальність лише перед початком наступного семестру. Щодо доплати - зазвичай доплачувати за перевід не потрібно, але Ви можете уточнити це у бухгалтерії Університету Короля Данила за номером +380342...."
-    """
-    },
-    "Заява про перевід на індивідуальну форму навчання": {
-        "description": "Студент бажає перевестися на індивідуальну форму навчання (не індивідуальний графік, це інше).",
-        "required_fields": ["SPECIALTY"],
-        "nuances": """
-    "У чому відмінність індивідуальної форми та індивідуального графіка?
-    Юридично для оформлення індивідуальної форми не потрібно вказувати вагомих причин, що потрібно для індивідуального графіка навчання. Але, вартість індивідуальної форми навчання є вищою, ніж вартість індивідуального графіка, вартість якого не змінюється порівняно з денною формою навчання"
-    """
-    },
-    "Заява про перевід на іншу спеціальність": {
-        "description": "Студент бажає перевестися на іншу спеціальність.",
-        "required_fields": ["SUBJECT", "SPECIALTY_TO"],
-        "nuances": """
-        "Коли мене буде переведено на іншу спеціальність?
-        Перевід здійснюється з наступного навчального семестру. При цьому, якщо Ви подали заяву про перевід між спеціальностями, до прикладу, 2 вересня - все одно маєте дочекатися наступного семестру"
+    value = raw.strip()
 
-        "Чи потрібно доплачувати за перевід на іншу спеціальність?
-        Загальний принцип каже, що доплачувати не потрібно - Ви платите за нову спеціальність стільки ж, скільки б заплатили за свою попередню спеціальність без переводу. Однак, не зайвим буде уточнити цю інформацію у бухгалтерії Університету за номером +380ххххххххххх"        """
-    },
-    "Заява про повторний курс у дистанційному форматі": {
-        "description": "Студент перебуває за кордоном або за станом здоров'я не може ліквідувати повторний курс.",
-        "required_fields": ["SUBJECT", "REASON"],
-        "nuances": """
-        "Що робити, якщо мені потрібно ліквідувати повторний курс із декількох дисциплін?
-        Для кожної дисципліни, з котрої у Вас є повторний курс, Ви повинні сформувати окрему заяву"        """
-    },
-    "Заява про складання навчальної практики за індивідуальним графіком": {
-        "description": "Студент не може складати навчальну практику очно у визначений термін.",
-        "required_fields": ["REASON"],
-        "nuances": """
-    !!!КОЛИ ОБИРАТИ: Якщо студент не зможе складати навчальну практику (повністю або частково) через хворобу, сімейні обставини, змагання тощо.
-    !!!НЮАНСИ: Обов'язково попередити студента, що пізніше треба принести оригінал підтверджувального документа у 300 кабінет (адміністрація Фахового коледжу).
-    !!!ЩО ВІДПОВІДАТИ: "Ця заява підходить, якщо у вас є документальне підтвердження причини відсутності."
-    """
-    },
-    "Заява про складання сесії в усній формі у зв'язку з наявністю особливих освітніх потреб у студента": {
-        "description": "Студент не може складати іспит у кабінеті у зв'язку з наявністю особливих освітніх потреб.",
-        "required_fields": [],
-        "nuances": """
-            Для складання іспиту у усній формі потрібно мати підтвердження наявності особливих освітніх потреб у відповідного студента
-            """
-    },
-    "Заява про складання сесії за індивідуальним графіком": {
-        "description": "Перенесення сесії через поважні причини.",
-        "required_fields": ["SUBJECT", "REASON"],
-        "nuances": """
-        !!!КОЛИ ОБИРАТИ: Якщо студент пропустив іспит/залік через хворобу, сімейні обставини, змагання тощо.
-        !!!НЮАНСИ: Обов'язково попередити студента, що пізніше треба принести оригінал довідки (лікарняний, виклик на змагання тощо) у 300 кабінет (адміністрація Фахового коледжу).
-        !!!ЩО ВІДПОВІДАТИ: "Ця заява підходить, якщо у вас є документальне підтвердження причини відсутності."
-        """
-    },
-}
-
-
-# --- НАЛАШТУВАННЯ ЛОГУВАННЯ ---
-# Створюємо папку для логів, якщо немає
-if not os.path.exists('logs'):
-    os.makedirs('logs')
-
-logger = logging.getLogger("eCollegeBot")
-logger.setLevel(logging.INFO)
-
-# Форматер: Час - Рівень - Повідомлення
-formatter = logging.Formatter('%(asctime)s | %(levelname)s | %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
-
-# 1. Лог у файл (ротація щодня, зберігає історію за 30 днів)
-file_handler = TimedRotatingFileHandler("logs/bot_history.log", when="midnight", interval=1, backupCount=30,
-                                        encoding="utf-8")
-file_handler.setFormatter(formatter)
-logger.addHandler(file_handler)
-
-# 2. Лог у консоль
-console_handler = logging.StreamHandler()
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
-
-REGEX_DATE = r"^\d{2}\.\d{2}\.\d{4}$"  # Тільки 01.01.2000
-REGEX_PHONE = r"^\+380\d{9}$"  # Тільки +380XXXXXXXXX
-REGEX_FULL_NAME = r"^[\w'’`\-]+\s+[\w'’`\-]+\s+[\w'’`\-]+$"  # Три слова (Прізвище Ім'я По-батькові)
-
-
-
-class DriveManager:
-    """Клас для роботи з Google Drive/Docs"""
-
-    def __init__(self):
-        self.creds = None
-        if os.path.exists('token.json'):
-            self.creds = Credentials.from_authorized_user_file('token.json', SCOPES)
-        if not self.creds or not self.creds.valid:
-            if self.creds and self.creds.expired and self.creds.refresh_token:
-                self.creds.refresh(Request())
-            else:
-                flow = InstalledAppFlow.from_client_secrets_file(CLIENT_SECRET_FILE, SCOPES)
-                self.creds = flow.run_local_server(port=0)
-            with open('token.json', 'w') as token:
-                token.write(self.creds.to_json())
-
-        self.drive_service = build('drive', 'v3', credentials=self.creds)
-        self.docs_service = build('docs', 'v1', credentials=self.creds)
-        logger.info("✅ Google Drive API connected successfully.")
-
-    def get_available_templates(self):
+    if col == Col.BIRTH_DATE:
+        if not Regex.DATE.match(value):
+            return False, "⛔ Невірний формат дати. Потрібно `ДД.ММ.РРРР` (наприклад, 15.01.2005)."
         try:
-            results = self.drive_service.files().list(
-                q=f"'{TEMPLATES_FOLDER_ID}' in parents and mimeType='application/vnd.google-apps.document' and trashed=false",
-                fields="files(id, name)"
-            ).execute()
-            return results.get('files', [])
-        except Exception as e:
-            logger.error(f"❌ Failed to fetch templates: {e}")
-            return []
-
-    def create_pdf_from_template(self, template_id, template_name, data):
-        # 1. Автоматичне заповнення технічних полів
-        data['date_of_signing'] = datetime.date.today().strftime("%d.%m.%Y")
-
-        # Обчислення курсу, якщо його немає
-        if 'group' in data and ('study_year' not in data or not data['study_year']):
-            import re
-            match = re.search(r'-(\d{2})', data['group'])
-            if match:
-                entry_year = 2000 + int(match.group(1))
-                current_year = datetime.date.today().year
-                current_month = datetime.date.today().month
-                course = current_year - entry_year + (1 if current_month >= 9 else 0)
-                if course > 0:
-                    data['study_year'] = str(course)
-
-        doc_id = None
-        try:
-            # Копіювання шаблону
-            copy_body = {'name': f"TEMP_{template_name}", 'parents': [TEMPLATES_FOLDER_ID]}
-            file_copy = self.drive_service.files().copy(fileId=template_id, body=copy_body).execute()
-            doc_id = file_copy['id']
-
-            # Заміна тексту
-            requests = []
-            for key, value in data.items():
-                safe_value = str(value) if value is not None else ""
-                variants = [key.lower(), key.upper(), key.capitalize()]  # {{key}}, {{KEY}}, {{Key}}
-
-                for var in variants:
-                    requests.append({
-                        'replaceAllText': {
-                            'containsText': {'text': f'{{{{{var}}}}}', 'matchCase': True},
-                            'replaceText': safe_value
-                        }
-                    })
-
-            if requests:
-                self.docs_service.documents().batchUpdate(documentId=doc_id, body={'requests': requests}).execute()
-
-            # Експорт у PDF
-            request = self.drive_service.files().export_media(fileId=doc_id, mimeType='application/pdf')
-            fh = io.BytesIO()
-            downloader = MediaIoBaseDownload(fh, request)
-            done = False
-            while not done:
-                status, done = downloader.next_chunk()
-
-            return fh.getvalue()
-
-        except Exception as e:
-            logger.error(f"⚠️ PDF Creation Error: {e}")
-            raise e
-        finally:
-            if doc_id:
-                try:
-                    self.drive_service.files().delete(fileId=doc_id).execute()
-                except:
-                    pass
-
-
-class SheetManager:
-    def __init__(self, credentials, spreadsheet_id):
-        self.service = build('sheets', 'v4', credentials=credentials)
-        self.spreadsheet_id = spreadsheet_id
-        logger.info("✅ Google Sheets API connected successfully.")
-
-    def get_student_data(self, telegram_id):
-        """Шукає студента за Telegram ID"""
-        try:
-            result = self.service.spreadsheets().values().get(
-                spreadsheetId=self.spreadsheet_id, range="Students!A:Z"
-            ).execute()
-            rows = result.get('values', [])
-            if not rows: return {}
-
-            headers = rows[0]
-            try:
-                tg_id_idx = next(i for i, h in enumerate(headers) if h.strip() == 'Telegram_ID')
-            except StopIteration:
-                logger.warning("Column 'Telegram_ID' not found in Sheets.")
-                return {}
-
-            for row in rows[1:]:
-                if len(row) > tg_id_idx and str(row[tg_id_idx]).strip() == str(telegram_id):
-                    student_data = {}
-                    for i, header in enumerate(headers):
-                        val = row[i] if i < len(row) else ""
-                        if val.strip():
-                            student_data[header.strip()] = val.strip()
-                    return student_data
-            return {}
-        except Exception as e:
-            logger.error(f"Google Sheets API Error (get_student_data): {e}")
-            return {}
-
-    def get_all_students(self):
-        """Отримує всіх студентів для пошуку по email"""
-        try:
-            result = self.service.spreadsheets().values().get(
-                spreadsheetId=self.spreadsheet_id, range="Students!A:Z"
-            ).execute()
-            rows = result.get('values', [])
-            if len(rows) < 2: return []
-
-            headers = [h.strip() for h in rows[0]]
-            students_list = []
-            for row in rows[1:]:
-                student_data = {}
-                for i, header in enumerate(headers):
-                    val = row[i] if i < len(row) else ""
-                    student_data[header] = val
-                students_list.append(student_data)
-            return students_list
-        except Exception as e:
-            logger.error(f"Error fetching all students: {e}")
-            return []
-
-    def get_student_by_email(self, email):
-        """Шукає студента за email"""
-        try:
-            all_students = self.get_all_students()
-            target_email = email.strip().lower()
-
-            for student in all_students:
-                # Перевіряємо різні варіанти написання назви колонки
-                raw_email = str(
-                    student.get('EMAIL', '') or student.get('Email', '') or student.get('STUDENTS_EMAIL', ''))
-                student_email = raw_email.strip().lower()
-                if student_email == target_email:
-                    return student
-            return None
-        except Exception as e:
-            logger.error(f"Error searching by email: {e}")
-            return None
-
-    def link_telegram_id(self, email, telegram_id):
-        """Прив'язує Telegram ID до Email у таблиці"""
-        try:
-            result = self.service.spreadsheets().values().get(
-                spreadsheetId=self.spreadsheet_id, range="Students!A:Z"
-            ).execute()
-            rows = result.get('values', [])
-            headers = [h.strip() for h in rows[0]]
-
-            try:
-                email_col_idx = next(
-                    i for i, h in enumerate(headers) if h.lower() in ['email', 'пошта', 'students_email'])
-                tg_col_idx = next(i for i, h in enumerate(headers) if h == 'Telegram_ID')
-            except StopIteration:
-                logger.error("Error: Columns 'Email' or 'Telegram_ID' missing in Sheet.")
-                return False
-
-            target_email = email.strip().lower()
-            row_number = -1
-
-            for i, row in enumerate(rows):
-                if i == 0: continue
-                curr_email = str(row[email_col_idx] if len(row) > email_col_idx else "").strip().lower()
-                if curr_email == target_email:
-                    row_number = i + 1
-                    break
-
-            if row_number == -1: return False
-
-            col_letter = chr(ord('A') + tg_col_idx)
-            cell_range = f"Students!{col_letter}{row_number}"
-
-            body = {'values': [[str(telegram_id)]]}
-            self.service.spreadsheets().values().update(
-                spreadsheetId=self.spreadsheet_id, range=cell_range,
-                valueInputOption="RAW", body=body
-            ).execute()
-
-            logger.info(f"💾 Linked Telegram_ID {telegram_id} to {email}")
-            return True
-        except Exception as e:
-            logger.error(f"Error linking Telegram ID: {e}")
-            return False
-
-    def update_student_field(self, telegram_id, field_name, new_value):
-        """Оновлює конкретне поле (колонку) для студента за Telegram_ID."""
-        try:
-            result = self.service.spreadsheets().values().get(
-                spreadsheetId=self.spreadsheet_id, range="Students!A:Z"
-            ).execute()
-            rows = result.get('values', [])
-            if not rows: return False
-
-            headers = [h.strip().upper() for h in rows[0]]
-            target_field = field_name.strip().upper()
-
-            try:
-                tg_col_idx = headers.index('TELEGRAM_ID')
-                target_col_idx = headers.index(target_field)
-            except ValueError:
-                logger.error(f"Column {target_field} or TELEGRAM_ID not found for update.")
-                return False
-
-            row_number = -1
-            for i, row in enumerate(rows):
-                if i == 0: continue
-                uid = str(row[tg_col_idx]) if len(row) > tg_col_idx else ""
-                if uid == str(telegram_id):
-                    row_number = i + 1
-                    break
-
-            if row_number == -1: return False
-
-            col_letter = chr(ord('A') + target_col_idx)
-            cell_range = f"Students!{col_letter}{row_number}"
-
-            body = {'values': [[str(new_value)]]}
-            self.service.spreadsheets().values().update(
-                spreadsheetId=self.spreadsheet_id, range=cell_range,
-                valueInputOption="RAW", body=body
-            ).execute()
-
-            logger.info(f"✏️ Updated {field_name} for ID {telegram_id}: {new_value}")
-            return True
-        except Exception as e:
-            logger.error(f"Error updating sheet: {e}")
-            return False
-
-    def log_event(self, student_data, doc_type, status="✅ SUCCESS"):
-        """Записує подію (генерацію документа) у вкладку Logs"""
-        try:
-            now = datetime.datetime.now()
-            date_str = now.strftime("%d.%m.%Y")
-            time_str = now.strftime("%H:%M:%S")
-
-            # Витягуємо дані (безпечно, якщо якихось полів немає)
-            name = student_data.get('STUDENTS_NAME', 'Невідомо')
-            group = student_data.get('GROUP', '—')
-
-            # Формуємо рядок для запису
-            values = [[date_str, time_str, name, group, doc_type, status]]
-
-            body = {'values': values}
-
-            # append додає дані в перший порожній рядок
-            self.service.spreadsheets().values().append(
-                spreadsheetId=self.spreadsheet_id,
-                range="Logs!A:F",  # Діапазон колонок
-                valueInputOption="USER_ENTERED",  # Щоб дати розпізнались як дати
-                insertDataOption="INSERT_ROWS",
-                body=body
-            ).execute()
-
-            logger.info(f"📊 Logged to Sheets: {doc_type} for {name}")
-            return True
-
-        except Exception as e:
-            logger.error(f"❌ Failed to log to Sheets: {e}")
-            return False
-
-
-class EmailManager:
-    def __init__(self, credentials):
-        self.service = build('gmail', 'v1', credentials=credentials)
-        logger.info("✅ Gmail API connected.")
-
-    def send_email(self, to_email, subject, body, file_bytes_io, filename):
-        try:
-            message = MIMEMultipart()
-            message['to'] = to_email
-            message['subject'] = subject
-            message.attach(MIMEText(body, 'plain'))
-
-            file_bytes_io.seek(0)
-            part = MIMEApplication(file_bytes_io.read(), Name=filename)
-            part['Content-Disposition'] = f'attachment; filename="{filename}"'
-            message.attach(part)
-            file_bytes_io.seek(0)
-
-            raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
-            self.service.users().messages().send(userId="me", body={'raw': raw_message}).execute()
-            logger.info(f"📧 Email sent to {to_email} with {filename}")
-            return True
-        except Exception as e:
-            logger.error(f"❌ Email sending error: {e}")
-            return False
-
-
-class GeminiBrain:
-    def __init__(self):
-        self.client = genai.Client(api_key=GEMINI_API_KEY)
-        self.model = GEMINI_AI_MODEL
-        logger.info("✅ Gemini AI connected.")
-
-    def analyze_dialog_turn(self, history, template_list, known_data=None, current_active_template=None, mode="NORMAL"):
-        if known_data is None: known_data = {}
-
-        response_schema = {
-            "type": "OBJECT",
-            "properties": {
-                "status": {
-                    "type": "STRING",
-                    "enum": ["CLARIFICATION_NEEDED", "PROFILE_UPDATE", "TEMPLATE_SELECTED", "WAITING_FOR_CONFIRMATION",
-                             "READY_TO_GENERATE"]
-                },
-                "bot_reply": {"type": "STRING"},
-                "selected_template_name": {"type": "STRING", "nullable": True},
-                "extracted_data": {
-                    "type": "OBJECT",
-                    "properties": {
-                        # Основні поля профілю
-                        "STUDENTS_NAME": {"type": "STRING"},
-                        "STUDENTS_PHONE": {"type": "STRING"},
-                        "STUDENTS_EMAIL": {"type": "STRING"},
-                        "DATE_OF_BIRTH": {"type": "STRING"},
-                        "SPECIALTY": {"type": "STRING"},
-                        "GROUP": {"type": "STRING"},
-                        "PARENTS_NAME": {"type": "STRING"},
-                        "PARENTS_PHONE": {"type": "STRING"},
-
-                        # Поля для заяв (динамічні)
-                        "DATE_FROM": {"type": "STRING"},
-                        "DATE_TO": {"type": "STRING"},
-                        "REASON": {"type": "STRING"},
-                        "SPECIALITY_TO": {"type": "STRING"},
-                        "SUBJECT": {"type": "STRING"},
-                        "DATE_OF_SIGNING": {"type": "STRING"},
-                        "STUDY_YEAR": {"type": "STRING"},
-                        "STUDY_SEMESTER": {"type": "STRING"},
-                        "LESSONS_RANGE": {"type": "STRING"},
-                    },
-                    "nullable": True
-                }
-            },
-            "required": ["status", "bot_reply"]
-        }
-
-        templates_info = []
-        for t in template_list:
-            name = t['name']
-            # Отримуємо конфіг або пустий словник, якщо шаблону немає в списку
-            config = TEMPLATE_CONFIG.get(name, {})
-
-            # 1. Формуємо інструкцію по змінних (ЖОРСТКО)
-            req_fields = config.get("required_fields", [])
-            if req_fields:
-                vars_instruction = f"   [STRICT VARIABLES]: You MUST collect ONLY: {', '.join(req_fields)} + standard Profile Data."
-            else:
-                vars_instruction = "   [STRICT VARIABLES]: Collect ONLY standard Profile Data (Name, Group, etc)."
-
-            # 2. Формуємо інструкцію по нюансах (М'ЯКО)
-            nuances = config.get("nuances", "No specific local rules. Use general knowledge.")
-
-            # Збираємо блок
-            info_block = (
-                f"TEMPLATE: '{name}'\n"
-                f"   Description: {config.get('description', '')}\n"
-                f"   COLLEGE RULES & NUANCES: {nuances}\n"
-                f"{vars_instruction}"
-            )
-            templates_info.append(info_block)
-
-        templates_str = "\n".join(templates_info)
-
-        current_date_obj = datetime.date.today()
-        current_date_str = current_date_obj.strftime("%d.%m.%Y")
-
-        # Логіка семестру і року
-        if current_date_obj.month >= 8:  # Серпень-Грудень
-            academic_year_base = current_date_obj.year
-            current_semester = "1"
-        else:  # Січень-Липень
-            academic_year_base = current_date_obj.year - 1
-            current_semester = "2"
-
-        known_data_str = json.dumps(known_data, ensure_ascii=False, indent=2)
-        chat_context = "\n".join([f"{msg['role']}: {msg['content']}" for msg in history])
-
-        focus_instruction = ""
-        if mode == 'EDITING':
-            focus_instruction = "⚠️ URGENT: USER IS IN 'EDITING_MODE'. IGNORE requests for new documents. FOCUS ONLY on extracting Profile Data (Group, Phone, etc)."
-        if current_active_template:
-            focus_instruction = f"URGENT: Active template is '{current_active_template}'. Focus ONLY on gathering missing fields for this document."
-
-        prompt = f"""
-        You are the AI Administrator for King Danylo University College Administration. (NO DEANS OFFICE, ONLY COLLEGE ADMINISTRATION)
-        Identify request, consult the student using COLLEGE RULES, gather data, and output JSON based on the SCHEMA.
-
-        ### ROLE & BEHAVIOR
-        - You are helpful, polite, and professional.
-        - **CONSULTANT MODE:** If the user asks "What should I do?" or "Which application is needed?", use the "ADVICE/FAQ" section from the templates list to guide them.
-        - **CLARIFICATION:** If the user's situation matches a template description, suggest that template.
-
-        ### 1. SYSTEM CONTEXT
-        - Mode: {mode} (If EDITING -> Only update profile).
-        - Date: {current_date_str}
-        - Year Base: {academic_year_base}
-        - Semester: {current_semester}
-        - Available Templates & Knowledge Base:
-        {templates_str}
-        {focus_instruction}
-
-        ### 2. STUDENT DATA
-        {known_data_str}
-
-        ### 3. RULES FOR PROFILE UPDATES
-        If user wants to change info (e.g., "New phone"):
-        - ALLOWED: "STUDENTS_PHONE", "PARENTS_PHONE". (Specialty updates automatically via Group, Parents phone has to differ from students phone).
-        - ACTION:
-          - If field is allowed and new value provided -> Output `PROFILE_UPDATE` + `extracted_data` (ONE key-value).
-          - If value missing -> Output `CLARIFICATION_NEEDED`.
-
-        ### 4. DATA PROCESSING & RESTRICTIONS (CRITICAL)
-        - **STRICT SCHEMA:** You can ONLY output fields defined in the 'extracted_data' schema. Do not invent new fields.
-        - **NO FILE UPLOADS:** DO NOT ask the user to upload photos, scans, or documents (medical certs, passports, tickets). 
-        - **HANDLING PROOFS:** If a reason implies a document (e.g., "sick leave" -> medical cert, "border crossing" -> passport stamp):
-        - **DO NOT ASK** for dates, periods, or numbers if they are NOT in the "REQUIRED VARIABLES" list for the specific template.          
-        - Accept the user's text explanation.
-        - In `bot_reply`, just REMIND the user to bring the physical original to the college office.
-        - **ONLY REQUESTED DATA:** Each template has its own variables. When TEMPLATE_SELECTED, request ONLY including but not already accessible variables - they are written in double curly brackets.  
-        - **REASON:** Concise linguistic construction (e.g., "сімейними обставинами" not "сімейні обставини", "поїздкою за кордон" not "поїздка за кордон" etc. And NEVER paste "у зв'язку з", because it is already given in the template).  
-        - **DATES:** Convert relative dates ("last week", "yesterday") to specific "DD.MM.YYYY".
-
-        ### 5. WORKFLOW
-        1. Identify Intent (Update Profile OR Create Document).
-        2. Identify Template -> `TEMPLATE_SELECTED`.
-        3. Gather Data -> `CLARIFICATION_NEEDED`.
-        4. VERIFICATION (CRITICAL):
-           - If all text data ready -> `WAITING_FOR_CONFIRMATION` (List data, ask "Correct?").
-        5. Finalize:
-           - If confirmed -> `READY_TO_GENERATE`.
-           - If corrected -> Go back.
-
-        ### 6. CHAT
-        {chat_context}
-
-        Respond strictly in JSON:
-        {{
-          "status": "CLARIFICATION_NEEDED | PROFILE_UPDATE | TEMPLATE_SELECTED | WAITING_FOR_CONFIRMATION | READY_TO_GENERATE",
-          "bot_reply": "String (Ukrainian)",
-          "selected_template_name": "String or null",
-          "extracted_data": {{ "FIELD": "VALUE" }}
-        }}
-        """
-
-        # Спрощений виклик без складної схеми (для економії токенів і швидкості), але з JSON enforcement
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                # Виклик Gemini (з налаштуваннями безпеки, які ми додали раніше)
-                response = self.client.models.generate_content(
-                    model=self.model,
-                    contents=prompt,
-                    config=types.GenerateContentConfig(
-                        response_mime_type="application/json",
-                        safety_settings=[
-                            types.SafetySetting(category="HARM_CATEGORY_HATE_SPEECH", threshold="BLOCK_NONE"),
-                            types.SafetySetting(category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="BLOCK_NONE"),
-                            types.SafetySetting(category="HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold="BLOCK_NONE"),
-                            types.SafetySetting(category="HARM_CATEGORY_HARASSMENT", threshold="BLOCK_NONE")
-                        ]
-                    )
+            d, m, y = map(int, value.split("."))
+            datetime.date(y, m, d)
+        except ValueError:
+            return False, "⛔ Такої дати не існує. Вкажіть коректну дату."
+
+    elif col in (Col.STUDENTS_PHONE, Col.PARENTS_PHONE):
+        if not Regex.PHONE.match(value):
+            return False, "⛔ Невірний формат. Вкажіть телефон у форматі `+380XXXXXXXXX`."
+
+        if col == Col.PARENTS_PHONE and profile:
+            student_digits = re.sub(r"\D", "", str(profile.get(Col.STUDENTS_PHONE, "")))
+            parent_digits  = re.sub(r"\D", "", value)
+            if student_digits and student_digits[-9:] == parent_digits[-9:]:
+                return False, (
+                    "⛔ Номер представника збігається з вашим.\n"
+                    "Введіть номер батька / матері / опікуна."
                 )
 
-                if not response.text:
-                    logger.warning("⚠️ Gemini returned EMPTY response.")
-                    return {"status": "CLARIFICATION_NEEDED",
-                            "bot_reply": "Я не знаю, що відповісти. Сформулюйте запит інакше."}
-
-                raw_text = response.text.strip()
-                if raw_text.startswith("```"):
-                    raw_text = raw_text.strip("`").replace("json\n", "", 1).strip()
-
-                # Якщо успішно розпарсили JSON — повертаємо результат і виходимо з циклу
-                return json.loads(raw_text)
-
-            except Exception as e:
-                error_str = str(e)
-                is_last_attempt = (attempt == max_retries - 1)
-
-                # Перевіряємо, чи це помилка перевантаження (503 або 429)
-                if "503" in error_str or "overloaded" in error_str or "429" in error_str:
-                    if is_last_attempt:
-                        logger.error(f"❌ Gemini Failed: {e}")
-                        # ВИКОРИСТОВУЄМО НАШ СЛОВНИК:
-                        return {"status": "CLARIFICATION_NEEDED", "bot_reply": UI_MESSAGES["google_overload"]}
-
-                    time.sleep(2)
-                    continue
-                else:
-                    logger.error(f"❌ Critical Error: {e}")
-                    # ВИКОРИСТОВУЄМО НАШ СЛОВНИК:
-                    return {"status": "CLARIFICATION_NEEDED", "bot_reply": UI_MESSAGES["unknown_critical_error"]}
-# Ініціалізація
-drive_mgr = DriveManager()
-sheet_mgr = SheetManager(drive_mgr.creds, SPREADSHEET_ID)
-email_mgr = EmailManager(drive_mgr.creds)
-brain = GeminiBrain()
-user_sessions = {}
-
-
-
-def get_specialty_from_group(group_name):
-    import re
-    # Шукаємо текст між "К" та формою навчання (с/з/і/д)
-    match = re.search(r'^К(.+?)[сзід]-', group_name.strip(), re.IGNORECASE)
-    if match:
-        code = match.group(1).strip() # Наприклад "ІПЗ" або "Мр"
-        # Шукаємо в словнику (враховуючи регістр ключів)
-        for key, value in SPECIALTIES_MAP.items():
-            if key.lower() == code.lower():
-                return value
-    return None
-
-
-async def validate_input(field_name, text_value, context_data=None):
-    """
-    Сувора валідація даних. Повертає (True, None) або (False, error_message).
-    """
-    text = text_value.strip()
-
-    if field_name == "DATE_OF_BIRTH":
-        if not re.match(REGEX_DATE, text):
-            return False, "⛔ **Невірний формат дати.**\nПотрібно `ДД.ММ.РРРР` (наприклад, 15.01.2005)."
-        try:
-            day, month, year = map(int, text.split('.'))
-            datetime.date(year, month, day)  # Перевірка чи існує така дата
-        except ValueError:
-            return False, "⛔ **Такої дати не існує.** Вкажіть коректну дату."
-
-    elif field_name in ["STUDENTS_PHONE", "PARENTS_PHONE"]:
-        # Якщо користувач ввів без плюса, але це номер - можна б було додати,
-        # але по ТЗ вимагається суворий формат +380...
-        if not re.match(REGEX_PHONE, text):
-            return False, "⛔ **Невірний формат телефону.**\nВкажіть телефон у форматі `+380xxxxxxxxx` (обов'язково з +380)."
-
-        # Специфічна перевірка для батьків: номер не може співпадати з номером студента
-        if field_name == "PARENTS_PHONE" and context_data:
-            student_phone = context_data.get('STUDENTS_PHONE', '')
-            # Очищуємо від зайвих символів для порівняння
-            s_clean = re.sub(r'\D', '', str(student_phone))
-            p_clean = re.sub(r'\D', '', text)
-            if s_clean and s_clean == p_clean:
-                return False, "⛔ **Помилка:** Номер представника співпадає з вашим.\nВведіть саме номер батька/матері/опікуна."
-
-    elif field_name == "PARENTS_NAME":
-        # Перевірка на 3 слова
-        parts = text.split()
-        if len(parts) != 3:
-            return False, "⛔ **Помилка ПІБ.**\nПотрібно ввести рівно 3 слова: Прізвище Ім'я По-батькові."
-        if len(text) < 5:
-            return False, "⛔ **Занадто короткe ім'я.** Введіть повні дані."
-
-        # Перевірка, чи не ввів студент сам себе (якщо ім'я студента відоме)
-        if context_data:
-            student_name = context_data.get('STUDENTS_NAME', '').lower()
-            input_name = text.lower()
-            # Перевіряємо перетин слів (проста евристика)
-            s_parts = set(student_name.split())
-            i_parts = set(input_name.split())
-            if len(s_parts.intersection(i_parts)) >= 2:  # Якщо співпадають хоча б 2 слова (Прізвище та Ім'я)
-                return False, "⛔ **Ви ввели своє ім'я.**\nПотрібно ввести ПІБ батька, матері або опікуна."
+    elif col == Col.PARENTS_NAME:
+        parts = value.split()
+        if len(parts) < 3:
+            return False, "⛔ Потрібно ввести рівно 3 слова: Прізвище Ім'я По-батькові."
+        if profile:
+            student_words = set(profile.get(Col.NAME, "").lower().split())
+            parent_words  = set(value.lower().split())
+            if len(student_words & parent_words) >= 2:
+                return False, "⛔ Ви ввели власне ім'я. Введіть ПІБ батька / матері / опікуна."
 
     return True, None
 
 
-async def handle_registration(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# ════════════════════════════════════════════════════════════════════════════════
+# 4.  СХЕМА ТАБЛИЦІ (динамічне кешування заголовків)
+# ════════════════════════════════════════════════════════════════════════════════
+
+class SchemaCache:
     """
-    Керує процесом реєстрації.
-    Для STUDENTS_PHONE вимагає ТІЛЬКИ кнопку.
-    Для інших полів — сувора валідація тексту.
+    Кешує mapping {назва_колонки: індекс} для кожного аркуша.
+    При першому зверненні до аркуша завантажує заголовки з Google Sheets.
+    Метод refresh() примусово оновлює кеш (викликати при зміні структури таблиці).
     """
-    user_id = str(update.effective_user.id)
-    session = user_sessions[user_id]
 
-    # Отримуємо текст (якщо є)
-    text = update.message.text.strip() if update.message.text else ""
+    def __init__(self, sheets_service, spreadsheet_id: str):
+        self._svc     = sheets_service
+        self._sid     = spreadsheet_id
+        self._cache: Dict[str, Dict[str, int]] = {}
 
-    step = session.get('reg_step')
+    def get_index(self, sheet: str, col_name: str) -> Optional[int]:
+        """Повертає 0-базований індекс колонки або None."""
+        mapping = self._get_mapping(sheet)
+        return mapping.get(col_name.strip().upper())
 
-    # --- КРОК 1: ОЧІКУВАННЯ ПОШТИ (Без змін) ---
-    if step == 'WAITING_EMAIL':
-        target_email = text.lower()
+    def get_all_headers(self, sheet: str) -> List[str]:
+        return list(self._get_mapping(sheet).keys())
 
-        if not target_email.endswith('@ukd.edu.ua'):
-            await update.message.reply_text(
-                "⛔ **Доступ заборонено.**\n"
-                "Система приймає тільки корпоративну пошту `@ukd.edu.ua`.\n"
-                "Введіть коректну пошту:",
-                parse_mode="Markdown"
-            )
-            return
-
-        msg = await update.message.reply_text("🔎 Перевіряю в базі даних...")
-        student = sheet_mgr.get_student_by_email(target_email)
-
-        if not student:
-            await context.bot.edit_message_text(
-                chat_id=update.effective_chat.id,
-                message_id=msg.message_id,
-                text="❌ **Користувача не знайдено.**\nПеревірте пошту або зверніться в деканат."
-            )
-            return
-
-        # Успіх
-        sheet_mgr.link_telegram_id(target_email, user_id)
-        session['profile'] = student
-        await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=msg.message_id)
-
-        missing = check_missing_fields(student)
-        if not missing:
-            session['reg_step'] = 'COMPLETED'
-            await update.message.reply_text(
-                f"✅ **Реєстрація успішна!**\nВітаю, {student.get('STUDENTS_NAME')}.\nТисніть /start.")
+    def refresh(self, sheet: Optional[str] = None) -> None:
+        if sheet:
+            self._cache.pop(sheet, None)
         else:
-            session['reg_step'] = 'WAITING_DATA'
-            session['missing_fields'] = missing
-            next_field = missing[0]
-            await update.message.reply_text(
-                f"👋 Вітаю, {student.get('STUDENTS_NAME')}!\n"
-                "Для завершення налаштування заповніть відсутні дані."
+            self._cache.clear()
+
+    def _get_mapping(self, sheet: str) -> Dict[str, int]:
+        if sheet not in self._cache:
+            result = (
+                self._svc.spreadsheets()
+                .values()
+                .get(spreadsheetId=self._sid, range=f"{sheet}!1:1")
+                .execute()
             )
-            await ask_next_field(update, context, next_field)
-        return
+            headers = result.get("values", [[]])[0]
+            self._cache[sheet] = {h.strip().upper(): i for i, h in enumerate(headers)}
+        return self._cache[sheet]
 
-    # --- КРОК 2: ЗБІР ДАНИХ (Оновлено) ---
-    elif step == 'WAITING_DATA':
-        missing = session.get('missing_fields', [])
-        if not missing:
-            session['reg_step'] = 'COMPLETED'
-            return
 
-        current_field = missing[0]
-        value_to_save = None
+# ════════════════════════════════════════════════════════════════════════════════
+# 5.  GOOGLE-МЕНЕДЖЕРИ
+# ════════════════════════════════════════════════════════════════════════════════
 
-        # === ЛОГІКА ДЛЯ ТЕЛЕФОНУ СТУДЕНТА (СУВОРО КНОПКА) ===
-        if current_field == "STUDENTS_PHONE":
-            if update.message.contact:
-                # Отримали контакт - все ок
-                phone = update.message.contact.phone_number
-                if not phone.startswith('+'): phone = '+' + phone
-                value_to_save = phone
-            else:
-                # Користувач надіслав текст/стікер/файл замість контакту
-                # 1. Формуємо клавіатуру знову
-                keyboard = [[KeyboardButton("📱 Поділитися номером", request_contact=True)]]
-                markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+class DriveManager:
+    """Google Drive + Google Docs: копіювання шаблонів і генерація PDF."""
 
-                # 2. Сваримось і повертаємо кнопку
-                await update.message.reply_text(
-                    "⛔ **Потрібно закінчити процес реєстрації.**\n"
-                    "Для ідентифікації особи потрібно ввести підтверджений номер.\n\n"
-                    "👇 **Натисніть кнопку «📱 Поділитися номером» внизу екрану.**",
-                    reply_markup=markup,  # <--- ПОВЕРТАЄМО КНОПКУ
-                    parse_mode="Markdown"
+    def __init__(self, creds: Credentials):
+        self.creds        = creds
+        self.drive_svc    = build("drive", "v3", credentials=creds)
+        self.docs_svc     = build("docs", "v1", credentials=creds)
+        logger.info("✅ DriveManager ready.")
+
+    def get_templates(self) -> List[Dict[str, str]]:
+        try:
+            res = (
+                self.drive_svc.files()
+                .list(
+                    q=(
+                        f"'{Env.TEMPLATES_FOLDER_ID}' in parents "
+                        "and mimeType='application/vnd.google-apps.document' "
+                        "and trashed=false"
+                    ),
+                    fields="files(id, name)",
                 )
-                return  # LOCK: нічого не зберігаємо, чекаємо далі
+                .execute()
+            )
+            return res.get("files", [])
+        except Exception as exc:
+            logger.error(f"get_templates: {exc}")
+            return []
 
-        # === ЛОГІКА ДЛЯ ІНШИХ ПОЛІВ (ТЕКСТ) ===
-        else:
-            # Для інших полів (дата, телефон батьків) очікуємо текст
-            if not text:
-                await update.message.reply_text("⚠️ Надішліть текстове повідомлення.")
+    def create_pdf(self, template_id: str, template_name: str, data: Dict[str, Any]) -> bytes:
+        """
+        Копіює шаблон, замінює {{PLACEHOLDER}}-и та повертає PDF-байти.
+        Тимчасову копію завжди видаляє у finally-блоці.
+        """
+        # Автоматичні технічні поля
+        data.setdefault("date_of_signing", datetime.date.today().strftime("%d.%m.%Y"))
+        self._fill_study_year(data)
+
+        doc_id: Optional[str] = None
+        try:
+            copy = (
+                self.drive_svc.files()
+                .copy(
+                    fileId=template_id,
+                    body={"name": f"TEMP_{template_name}", "parents": [Env.TEMPLATES_FOLDER_ID]},
+                )
+                .execute()
+            )
+            doc_id = copy["id"]
+
+            requests = []
+            for key, value in data.items():
+                safe = str(value) if value is not None else ""
+                for variant in (key.lower(), key.upper(), key.capitalize()):
+                    requests.append({
+                        "replaceAllText": {
+                            "containsText": {"text": f"{{{{{variant}}}}}", "matchCase": True},
+                            "replaceText": safe,
+                        }
+                    })
+
+            if requests:
+                self.docs_svc.documents().batchUpdate(
+                    documentId=doc_id, body={"requests": requests}
+                ).execute()
+
+            req = self.drive_svc.files().export_media(fileId=doc_id, mimeType="application/pdf")
+            buf = io.BytesIO()
+            dl  = MediaIoBaseDownload(buf, req)
+            done = False
+            while not done:
+                _, done = dl.next_chunk()
+            return buf.getvalue()
+
+        finally:
+            if doc_id:
+                try:
+                    self.drive_svc.files().delete(fileId=doc_id).execute()
+                except Exception:
+                    pass
+
+    @staticmethod
+    def _fill_study_year(data: Dict[str, Any]) -> None:
+        if data.get("study_year"):
+            return
+        group = data.get("group") or data.get("GROUP", "")
+        m = re.search(r"-(\d{2})-", str(group))
+        if not m:
+            return
+        entry_year = 2000 + int(m.group(1))
+        today      = datetime.date.today()
+        course     = today.year - entry_year + (1 if today.month >= 9 else 0)
+        if course > 0:
+            data["study_year"] = str(course)
+
+
+class SheetManager:
+    """
+    Повний CRUD для Google Sheets.
+    Використовує SchemaCache — жодних хардкоджених індексів колонок.
+    """
+
+    def __init__(self, creds: Credentials, spreadsheet_id: str):
+        self._sid   = spreadsheet_id
+        self._svc   = build("sheets", "v4", credentials=creds)
+        self.schema = SchemaCache(self._svc, spreadsheet_id)
+        logger.info("✅ SheetManager ready.")
+
+    # ── Утиліти ──────────────────────────────────────────────────────────────
+
+    def _get_sheet_rows(self, sheet: str) -> List[List[Any]]:
+        res = (
+            self._svc.spreadsheets()
+            .values()
+            .get(spreadsheetId=self._sid, range=f"{sheet}!A:ZZ")
+            .execute()
+        )
+        return res.get("values", [])
+
+    def _col_letter(self, sheet: str, col_name: str) -> Optional[str]:
+        idx = self.schema.get_index(sheet, col_name)
+        if idx is None:
+            return None
+        # Підтримка до колонки ZZ (702 колонки)
+        if idx < 26:
+            return chr(ord("A") + idx)
+        return chr(ord("A") + idx // 26 - 1) + chr(ord("A") + idx % 26)
+
+    def _row_to_dict(self, headers: List[str], row: List[Any]) -> Dict[str, Any]:
+        return {h: (row[i] if i < len(row) else "") for i, h in enumerate(headers)}
+
+    def _find_row_by_field(
+        self, sheet: str, col_name: str, value: str
+    ) -> Optional[int]:
+        """Повертає 1-базований номер рядка або None."""
+        rows = self._get_sheet_rows(sheet)
+        if not rows:
+            return None
+        idx = self.schema.get_index(sheet, col_name)
+        if idx is None:
+            return None
+        target = str(value).strip().lower()
+        for i, row in enumerate(rows[1:], start=2):
+            cell = str(row[idx]).strip().lower() if idx < len(row) else ""
+            if cell == target:
+                return i
+        return None
+
+    # ── Публічний API ─────────────────────────────────────────────────────────
+
+    def get_student_by_telegram_id(self, telegram_id: str) -> Optional[Dict[str, Any]]:
+        rows = self._get_sheet_rows(SheetName.STUDENTS)
+        if len(rows) < 2:
+            return None
+        headers = [h.strip().upper() for h in rows[0]]
+        idx = self.schema.get_index(SheetName.STUDENTS, Col.TELEGRAM_ID)
+        if idx is None:
+            logger.warning("Column TELEGRAM_ID not found.")
+            return None
+        for row in rows[1:]:
+            if idx < len(row) and str(row[idx]).strip() == str(telegram_id):
+                return self._row_to_dict(headers, row)
+        return None
+
+    def get_student_by_email(self, email: str) -> Optional[Dict[str, Any]]:
+        rows = self._get_sheet_rows(SheetName.STUDENTS)
+        if len(rows) < 2:
+            return None
+        headers = [h.strip().upper() for h in rows[0]]
+        idx = self.schema.get_index(SheetName.STUDENTS, Col.EMAIL)
+        if idx is None:
+            logger.warning("Column STUDENTS_EMAIL not found.")
+            return None
+        target = email.strip().lower()
+        for row in rows[1:]:
+            cell = str(row[idx]).strip().lower() if idx < len(row) else ""
+            if cell == target:
+                return self._row_to_dict(headers, row)
+        return None
+
+    def link_telegram_id(self, email: str, telegram_id: str) -> bool:
+        row_num = self._find_row_by_field(SheetName.STUDENTS, Col.EMAIL, email)
+        if row_num is None:
+            return False
+        return self._write_cell(SheetName.STUDENTS, Col.TELEGRAM_ID, row_num, telegram_id)
+
+    def update_field_by_telegram_id(self, telegram_id: str, col_name: str, value: Any) -> bool:
+        row_num = self._find_row_by_field(SheetName.STUDENTS, Col.TELEGRAM_ID, telegram_id)
+        if row_num is None:
+            logger.warning(f"update_field: student {telegram_id} not found.")
+            return False
+        return self._write_cell(SheetName.STUDENTS, col_name, row_num, value)
+
+    def load_specialties(self) -> Dict[str, str]:
+        """Завантажує словник спеціальностей з аркуша Config."""
+        try:
+            rows = self._get_sheet_rows(SheetName.CONFIG)
+            return {str(r[0]).strip(): str(r[1]).strip() for r in rows[1:] if len(r) >= 2 and r[0]}
+        except Exception as exc:
+            logger.error(f"load_specialties: {exc}")
+            return {}
+
+    def log_event(self, profile: Dict[str, Any], doc_type: str, status: str = "✅ SUCCESS") -> None:
+        now  = datetime.datetime.now()
+        name  = profile.get(Col.NAME, "Невідомо")
+        group = profile.get(Col.GROUP, "—")
+        body  = {"values": [[now.strftime("%d.%m.%Y"), now.strftime("%H:%M:%S"), name, group, doc_type, status]]}
+        try:
+            self._svc.spreadsheets().values().append(
+                spreadsheetId=self._sid,
+                range=f"{SheetName.LOGS}!A:F",
+                valueInputOption="USER_ENTERED",
+                insertDataOption="INSERT_ROWS",
+                body=body,
+            ).execute()
+        except Exception as exc:
+            logger.error(f"log_event: {exc}")
+
+    # ── Приватні ─────────────────────────────────────────────────────────────
+
+    def _write_cell(self, sheet: str, col_name: str, row_num: int, value: Any) -> bool:
+        letter = self._col_letter(sheet, col_name)
+        if letter is None:
+            logger.error(f"_write_cell: column {col_name} not found in {sheet}.")
+            return False
+        try:
+            self._svc.spreadsheets().values().update(
+                spreadsheetId=self._sid,
+                range=f"{sheet}!{letter}{row_num}",
+                valueInputOption="RAW",
+                body={"values": [[str(value)]]},
+            ).execute()
+            logger.info(f"✏️  {col_name}[row {row_num}] → {value!r}")
+            return True
+        except Exception as exc:
+            logger.error(f"_write_cell: {exc}")
+            return False
+
+
+class EmailManager:
+    """Відправляє листи через Gmail API."""
+
+    def __init__(self, creds: Credentials):
+        self._svc = build("gmail", "v1", credentials=creds)
+        logger.info("✅ EmailManager ready.")
+
+    def send(
+        self,
+        to: str,
+        subject: str,
+        body: str,
+        attachment: io.BytesIO,
+        filename: str,
+    ) -> bool:
+        try:
+            msg = MIMEMultipart()
+            msg["to"]      = to
+            msg["subject"] = subject
+            msg.attach(MIMEText(body, "plain"))
+
+            attachment.seek(0)
+            part = MIMEApplication(attachment.read(), Name=filename)
+            part["Content-Disposition"] = f'attachment; filename="{filename}"'
+            msg.attach(part)
+            attachment.seek(0)
+
+            raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
+            self._svc.users().messages().send(userId="me", body={"raw": raw}).execute()
+            logger.info(f"📧 Email → {to} | {filename}")
+            return True
+        except Exception as exc:
+            logger.error(f"EmailManager.send: {exc}")
+            return False
+
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# 5б. DEV NOTIFIER — сповіщення розробника про невідомі запити
+# ════════════════════════════════════════════════════════════════════════════════
+
+class DevNotifier:
+    """
+    Надсилає розробнику сповіщення, коли студент задає запит,
+    який бот не може обробити (статус UNKNOWN_INTENT).
+
+    Канали:
+      • Telegram (ADMIN_ID)  — завжди, якщо налаштовано
+      • Email (ADMIN_EMAIL)  — опційно, якщо налаштовано
+
+    Захист від флуду:
+      • Cooldown per-user: не більше 1 сповіщення кожні UNKNOWN_NOTIF_COOLDOWN_MIN хвилин
+        від одного й того самого студента.
+      • Дедуплікація: якщо повідомлення ідентичне попередньому — не надсилати.
+    """
+
+    def __init__(self, email_mgr: "EmailManager"):
+        self._email = email_mgr
+        # {user_id: {"last_at": datetime, "last_text": str}}
+        self._state: Dict[str, Dict[str, Any]] = {}
+
+    async def notify(
+        self,
+        bot,
+        user_id:  str,
+        profile:  Dict[str, Any],
+        message:  str,
+        history:  List[Dict[str, str]],
+    ) -> None:
+        """
+        Основний метод — викликати з handle_message при status == UNKNOWN_INTENT.
+        bot — telegram.Bot instance (context.bot).
+        """
+        if not Env.ADMIN_ID and not Env.ADMIN_EMAIL:
+            return  # нічого не налаштовано — тихо пропускаємо
+
+        now   = datetime.datetime.now()
+        state = self._state.get(user_id, {})
+
+        # ── Cooldown ─────────────────────────────────────────────────────────
+        last_at: Optional[datetime.datetime] = state.get("last_at")
+        if last_at:
+            elapsed = (now - last_at).total_seconds() / 60
+            if elapsed < Env.UNKNOWN_NOTIF_COOLDOWN_MIN:
+                logger.debug(f"[DevNotifier] cooldown active for {user_id}, skipping.")
                 return
 
-            # Валідація тексту
-            is_valid, error_msg = await validate_input(current_field, text, session['profile'])
-            if not is_valid:
-                await update.message.reply_text(error_msg, parse_mode="Markdown")
-                return  # LOCK
+        # ── Дедуплікація ─────────────────────────────────────────────────────
+        if state.get("last_text") == message.strip():
+            logger.debug(f"[DevNotifier] duplicate message from {user_id}, skipping.")
+            return
 
-            value_to_save = text
+        self._state[user_id] = {"last_at": now, "last_text": message.strip()}
 
-        # === ЗБЕРЕЖЕННЯ (ЗАГАЛЬНЕ) ===
-        wait_msg = await update.message.reply_text("💾 Записую...", reply_markup=ReplyKeyboardRemove())
+        # ── Формуємо текст сповіщення ────────────────────────────────────────
+        name    = profile.get(Col.NAME,  "невідомо")
+        group   = profile.get(Col.GROUP, "—")
+        ts      = now.strftime("%d.%m.%Y %H:%M")
 
-        if sheet_mgr.update_student_field(user_id, current_field, value_to_save):
-            session['profile'][current_field] = value_to_save
-            session['missing_fields'].pop(0)
-            await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=wait_msg.message_id)
+        # Останні 5 повідомлень діалогу для контексту
+        ctx_lines = [
+            f"  [{m['role'].upper()}]: {m['content']}"
+            for m in history[-5:]
+        ]
+        ctx_block = "\n".join(ctx_lines) if ctx_lines else "  (порожньо)"
 
-            if session['missing_fields']:
-                next_field = session['missing_fields'][0]
-                await update.message.reply_text("✅ Прийнято.")
-                await ask_next_field(update, context, next_field)
-            else:
-                session['reg_step'] = 'COMPLETED'
-                await update.message.reply_text(
-                    "🎉 **Дані оновлено!**\nТепер ви маєте повний доступ.\n"
-                    "Підкажіть, чим я можу Вам допомогти?",
-                    reply_markup=ReplyKeyboardRemove(),
-                    parse_mode="Markdown"
-                )
-        else:
-            await update.message.reply_text("❌ Помилка запису. Спробуйте ще раз.")
-        return
-
-
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = str(update.effective_user.id)
-    chat_id = update.effective_chat.id
-    reset_timeout_timer(user_id, chat_id, context)
-
-    # Ініціалізація сесії
-    if user_id not in user_sessions:
-        user_sessions[user_id] = {
-            'history': [], 'profile': {}, 'active_template': None,
-            'msg_count': 0, 'blocked_until': None,
-            'reg_step': None  # Новий ключ стану
-        }
-
-    session = user_sessions[user_id]
-
-    # Спроба "тихої" авторизації, якщо юзер вже є в базі
-    student = sheet_mgr.get_student_data(user_id)
-
-    if student:
-        # Перевіряємо, чи є всі поля, навіть якщо він в базі
-        missing = check_missing_fields(student)
-        if missing:
-            session['profile'] = student
-            session['missing_fields'] = missing
-            session['reg_step'] = 'WAITING_DATA'
-            await update.message.reply_text("⚠️ **Потрібне оновлення даних.**")
-            await ask_next_field(update, context, missing[0])
-        else:
-            session['profile'] = student
-            session['reg_step'] = 'COMPLETED'
-            await update.message.reply_text(f"👋 З поверненням, {student.get('STUDENTS_NAME')}!\nЧим можу допомогти?",
-                                            parse_mode="Markdown")
-    else:
-        # Новий користувач або не знайдений
-        session['reg_step'] = 'WAITING_EMAIL'
-        session['profile'] = {}
-        await update.message.reply_text(
-            "👋 **Вітаю в системі E-College UKD!**\n\n"
-            "🔐 Для початку роботи необхідно авторизуватися.\n"
-            "Введіть вашу **корпоративну пошту** (формат: `mail@ukd.edu.ua`):",
-            parse_mode="Markdown",
-            reply_markup=ReplyKeyboardRemove()
+        tg_text = (
+            f"🔔 *Невідомий запит студента*\n\n"
+            f"👤 *{name}* | {group}\n"
+            f"🆔 `{user_id}`\n"
+            f"🕐 {ts}\n\n"
+            f"💬 *Запит:*\n`{message}`\n\n"
+            f"📜 *Контекст діалогу:*\n```\n{ctx_block}\n```"
         )
 
+        email_body = (
+            f"Студент: {name} ({group})\n"
+            f"Telegram ID: {user_id}\n"
+            f"Час: {ts}\n\n"
+            f"Запит:\n{message}\n\n"
+            f"Контекст (останні 5 повідомлень):\n{ctx_block}\n"
+        )
 
-async def ask_next_field(update, context, field):
-    """Відправляє питання з правильною клавіатурою"""
-    question = REQUIRED_FIELDS_MAP[field]
+        # ── Telegram ─────────────────────────────────────────────────────────
+        if Env.ADMIN_ID:
+            try:
+                await bot.send_message(
+                    chat_id=Env.ADMIN_ID,
+                    text=tg_text,
+                    parse_mode="Markdown",
+                )
+                logger.info(f"[DevNotifier] Telegram notif sent for user {user_id}.")
+            except Exception as exc:
+                logger.error(f"[DevNotifier] Telegram send failed: {exc}")
 
-    if field == "STUDENTS_PHONE":
-        # Спеціальна кнопка для телефону
-        keyboard = [[KeyboardButton("📱 Поділитися номером", request_contact=True)]]
-        markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
-    else:
-        # Прибираємо кнопку для звичайних текстових питань
-        markup = ReplyKeyboardRemove()
+        # ── Email ────────────────────────────────────────────────────────────
+        if Env.ADMIN_EMAIL:
+            try:
+                dummy_buf = io.BytesIO(email_body.encode("utf-8"))
+                # Відправляємо як plain-text вкладення (зручно для архіву)
+                self._email.send(
+                    to       = Env.ADMIN_EMAIL,
+                    subject  = f"[eCollege Bot] Невідомий запит — {name} — {ts}",
+                    body     = email_body,
+                    attachment = dummy_buf,
+                    filename = f"unknown_request_{user_id}_{now.strftime('%Y%m%d_%H%M%S')}.txt",
+                )
+                logger.info(f"[DevNotifier] Email notif sent for user {user_id}.")
+            except Exception as exc:
+                logger.error(f"[DevNotifier] Email send failed: {exc}")
 
-    await update.message.reply_text(question, reply_markup=markup)
+        # ── Logs sheet ───────────────────────────────────────────────────────
+        # Записуємо в той самий аркуш Logs з окремим статусом
+        sheet_mgr.log_event(profile, f"❓ UNKNOWN: {message[:80]}", "🔔 NOTIFIED DEV")
 
 
-def check_missing_fields(profile):
-    """Повертає список полів, які пусті в профілі"""
+
+TEMPLATE_CONFIG: Dict[str, Dict[str, Any]] = {
+    "Заява про виготовлення студентського квитка": {
+        "description": "Студент хоче отримати студентський квиток",
+        "required_fields": [],
+        "nuances": (
+            "Вартість студентського квитка у 2025–2026 н.р. — 150 грн. "
+            "Виготовлення займає до місяця."
+        ),
+    },
+    "Заява про відпрацювання за індивідуальним графіком": {
+        "description": "Студент бажає відпрацювати пропущені заняття не в очному форматі.",
+        "required_fields": ["REASON"],
+        "nuances": "Пишіть викладачам на корпоративну пошту (@ukd.edu.ua).",
+    },
+    "Заява про відрахування за власним бажанням": {
+        "description": "Припинення навчання.",
+        "required_fields": [],
+        "nuances": (
+            "Якщо відраховано всередині семестру без оплати — оплата все одно обов'язкова. "
+            "Виписку оцінок можна отримати окремою заявою."
+        ),
+    },
+    "Заява про дозвіл пропустити деякі пари впродовж конкретного дня": {
+        "description": "Студент хоче пропустити одну або кілька пар протягом одного дня.",
+        "required_fields": ["DATE_FROM", "LESSONS_RANGE", "REASON"],
+        "nuances": "Пропущені пари обов'язково потрібно відпрацювати.",
+    },
+    "Заява про дозвіл пропустити пари в навчальний період": {
+        "description": "Відсутність більше одного дня.",
+        "required_fields": ["DATE_FROM", "DATE_TO", "REASON"],
+        "nuances": (
+            "Підтверджувальний документ: квиток на рейс або скан паспорта з печаткою. "
+            "Пропущені пари обов'язково відпрацювати."
+        ),
+    },
+    "Заява про надання академвідпустки": {
+        "description": "Студент бажає призупинити навчання.",
+        "required_fields": ["REASON"],
+        "nuances": "При академвідпустці бронь від мобілізації втрачається. Тривалість — 1 рік.",
+    },
+    "Заява про отримання виписки оцінок": {
+        "description": "Виписка оцінок до закінчення навчання.",
+        "required_fields": ["DATE_FROM", "DATE_TO", "REASON"],
+        "nuances": "Формується впродовж 5 робочих днів.",
+    },
+    "Заява про отримання індивідуального графіка навчання": {
+        "description": "Індивідуальний графік (не форма) навчання.",
+        "required_fields": ["SPECIALTY", "REASON"],
+        "nuances": "За індивідуального графіка відвідування пар не обов'язкове.",
+    },
+    "Заява про перевід на денну форму навчання": {
+        "description": "Перевід на денну форму.",
+        "required_fields": ["SPECIALTY"],
+        "nuances": "Перевід — з наступного семестру. Код групи зміниться на *с.",
+    },
+    "Заява про перевід на заочну форму навчання": {
+        "description": "Перевід на заочну форму (3–4 курс).",
+        "required_fields": ["SPECIALTY"],
+        "nuances": "Перевід — з наступного семестру. Код групи зміниться на *з.",
+    },
+    "Заява про перевід на індивідуальну форму навчання": {
+        "description": "Перевід на індивідуальну форму.",
+        "required_fields": ["SPECIALTY"],
+        "nuances": "Вартість індивідуальної форми вища, ніж індивідуального графіка.",
+    },
+    "Заява про перевід на іншу спеціальність": {
+        "description": "Зміна спеціальності.",
+        "required_fields": ["SUBJECT", "SPECIALTY_TO"],
+        "nuances": "Перевід — з наступного семестру. Доплата уточнюється в бухгалтерії.",
+    },
+    "Заява про повторний курс у дистанційному форматі": {
+        "description": "Ліквідація повторного курсу дистанційно.",
+        "required_fields": ["SUBJECT", "REASON"],
+        "nuances": "Для кожної дисципліни — окрема заява.",
+    },
+    "Заява про складання навчальної практики за індивідуальним графіком": {
+        "description": "Неможливість складання навчальної практики очно.",
+        "required_fields": ["REASON"],
+        "nuances": "Потрібен оригінал підтверджувального документа у каб. 300.",
+    },
+    "Заява про складання сесії в усній формі у зв'язку з наявністю особливих освітніх потреб у студента": {
+        "description": "Усна форма іспиту через особливі освітні потреби.",
+        "required_fields": [],
+        "nuances": "Необхідне підтвердження особливих освітніх потреб.",
+    },
+    "Заява про складання сесії за індивідуальним графіком": {
+        "description": "Перенесення сесії через поважні причини.",
+        "required_fields": ["SUBJECT", "REASON"],
+        "nuances": "Оригінал довідки — у каб. 300.",
+    },
+}
+
+
+class GeminiBrain:
+    """Взаємодія з Gemini API."""
+
+    _MAX_RETRIES = 5
+
+    def __init__(self):
+        self._client = genai.Client(api_key=Env.GEMINI_API_KEY)
+        self._model  = Env.GEMINI_AI_MODEL
+        logger.info("✅ GeminiBrain ready.")
+
+    def analyze(
+        self,
+        history:          List[Dict[str, str]],
+        templates:        List[Dict[str, str]],
+        profile:          Dict[str, Any],
+        active_template:  Optional[str] = None,
+        mode:             str           = BotMode.NORMAL,
+    ) -> Dict[str, Any]:
+
+        templates_str = self._build_templates_block(templates)
+        today         = datetime.date.today()
+        semester      = "1" if today.month >= 8 else "2"
+        year_base     = today.year if today.month >= 8 else today.year - 1
+        chat_ctx      = "\n".join(f"{m['role']}: {m['content']}" for m in history)
+
+        focus = ""
+        if mode == BotMode.EDITING:
+            focus = "⚠️ USER IS IN EDITING_MODE. Збирай ТІЛЬКИ Profile Data."
+        elif active_template:
+            focus = f"URGENT: Active template = '{active_template}'. Збирай ТІЛЬКИ необхідні поля."
+
+        prompt = f"""
+Ти — ШІ-адміністратор Фахового коледжу Університету Короля Данила.
+Ідентифікуй запит, консультуй за правилами коледжу, збирай дані, відповідай JSON.
+
+### КОНТЕКСТ
+- Режим: {mode}
+- Дата: {today.strftime('%d.%m.%Y')} | Рік: {year_base} | Семестр: {semester}
+{focus}
+
+### ШАБЛОНИ ТА ПРАВИЛА
+{templates_str}
+
+### ДАНІ СТУДЕНТА
+{json.dumps(profile, ensure_ascii=False, indent=2)}
+
+### ПРАВИЛА ОБРОБКИ
+- ЛИШЕ поля зі схеми extracted_data — не вигадуй нових.
+- НЕ ПРОСИ завантажувати файли, фото, документи. Нагадуй принести оригінали фізично.
+- REASON — коротка конструкція в орудному відмінку (напр. "сімейними обставинами").
+- Відносні дати ("вчора", "минулого тижня") → конкретна "ДД.ММ.РРРР".
+- СПОЧАТКУ підтвердження даних (WAITING_FOR_CONFIRMATION), потім READY_TO_GENERATE.
+- Дозволені оновлення профілю: STUDENTS_PHONE, PARENTS_PHONE, GROUP.
+  При зміні GROUP — SPECIALTY оновлюється автоматично, не проси його окремо.
+- UNKNOWN_INTENT: якщо запит студента НЕ стосується жодного шаблону, НЕ є
+  оновленням профілю, і ти не можеш дати корисну відповідь на основі правил
+  коледжу — відповідай статусом UNKNOWN_INTENT. bot_reply залишай порожнім (бот
+  підставить стандартну фразу). Не використовуй UNKNOWN_INTENT для уточнень у
+  межах вже обраного шаблону.
+
+### ДІАЛОГ
+{chat_ctx}
+
+Відповідай ТІЛЬКИ JSON:
+{{
+  "status": "CLARIFICATION_NEEDED|PROFILE_UPDATE|TEMPLATE_SELECTED|WAITING_FOR_CONFIRMATION|READY_TO_GENERATE|UNKNOWN_INTENT",
+  "bot_reply": "рядок українською (порожній рядок при UNKNOWN_INTENT)",
+  "selected_template_name": "рядок або null",
+  "extracted_data": {{
+    "STUDENTS_NAME": "", "STUDENTS_PHONE": "", "STUDENTS_EMAIL": "",
+    "DATE_OF_BIRTH": "", "SPECIALTY": "", "GROUP": "",
+    "PARENTS_NAME": "", "PARENTS_PHONE": "",
+    "DATE_FROM": "", "DATE_TO": "", "REASON": "",
+    "SPECIALTY_TO": "", "SUBJECT": "",
+    "DATE_OF_SIGNING": "", "STUDY_YEAR": "", "STUDY_SEMESTER": "",
+    "LESSONS_RANGE": ""
+  }}
+}}
+"""
+        for attempt in range(self._MAX_RETRIES):
+            try:
+                resp = self._client.models.generate_content(
+                    model=self._model,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        safety_settings=[
+                            types.SafetySetting(category=c, threshold="BLOCK_NONE")
+                            for c in [
+                                "HARM_CATEGORY_HATE_SPEECH",
+                                "HARM_CATEGORY_DANGEROUS_CONTENT",
+                                "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                                "HARM_CATEGORY_HARASSMENT",
+                            ]
+                        ],
+                    ),
+                )
+
+                if not resp.text:
+                    return {"status": "CLARIFICATION_NEEDED", "bot_reply": "Порожня відповідь. Спробуйте ще."}
+
+                raw = resp.text.strip().lstrip("```json").rstrip("```").strip()
+                return json.loads(raw)
+
+            except Exception as exc:
+                err = str(exc)
+                if "503" in err or "overloaded" in err or "429" in err:
+                    if attempt < self._MAX_RETRIES - 1:
+                        time.sleep(2 ** attempt)
+                        continue
+                    return {"status": "CLARIFICATION_NEEDED", "bot_reply": UI.GOOGLE_OVERLOAD}
+                logger.error(f"GeminiBrain.analyze: {exc}")
+                return {"status": "CLARIFICATION_NEEDED", "bot_reply": UI.UNKNOWN_ERROR}
+
+        return {"status": "CLARIFICATION_NEEDED", "bot_reply": UI.UNKNOWN_ERROR}
+
+    @staticmethod
+    def _build_templates_block(templates: List[Dict[str, str]]) -> str:
+        blocks = []
+        for t in templates:
+            cfg = TEMPLATE_CONFIG.get(t["name"], {})
+            req = cfg.get("required_fields", [])
+            vars_note = (
+                f"COLLECT ONLY: {', '.join(req)} + Profile Data."
+                if req
+                else "Collect ONLY standard Profile Data."
+            )
+            blocks.append(
+                f"TEMPLATE: '{t['name']}'\n"
+                f"  Опис: {cfg.get('description', '')}\n"
+                f"  Правила: {cfg.get('nuances', '')}\n"
+                f"  {vars_note}"
+            )
+        return "\n\n".join(blocks)
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# 7.  УПРАВЛІННЯ СЕСІЯМИ
+# ════════════════════════════════════════════════════════════════════════════════
+
+def _default_session() -> Dict[str, Any]:
+    return {
+        SK.HISTORY:             [],
+        SK.PROFILE:             {},
+        SK.ACTIVE_TEMPLATE:     None,
+        SK.MSG_COUNT:           0,
+        SK.BLOCKED_UNTIL:       None,
+        SK.MODE:                BotMode.NORMAL,
+        SK.REG_STEP:            None,
+        SK.MISSING_FIELDS:      [],
+        SK.LAST_UNKNOWN_NOTIF:  None,   # datetime останнього сповіщення розробника
+    }
+
+
+class SessionStore:
+    """In-memory сховище сесій із ледачою ініціалізацією."""
+
+    def __init__(self):
+        self._store: Dict[str, Dict[str, Any]] = {}
+
+    def get(self, user_id: str) -> Dict[str, Any]:
+        if user_id not in self._store:
+            self._store[user_id] = _default_session()
+        # Дозаповнюємо поля, що могли з'явитися пізніше
+        session = self._store[user_id]
+        for k, v in _default_session().items():
+            session.setdefault(k, v)
+        return session
+
+    def reset_dialog(self, user_id: str) -> None:
+        s = self.get(user_id)
+        s[SK.HISTORY]         = []
+        s[SK.ACTIVE_TEMPLATE] = None
+        s[SK.MSG_COUNT]       = 0
+
+    def __contains__(self, item: str) -> bool:
+        return item in self._store
+
+
+sessions = SessionStore()
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# 8.  ДОПОМІЖНІ ФУНКЦІЇ
+# ════════════════════════════════════════════════════════════════════════════════
+
+def get_missing_onboarding_fields(profile: Dict[str, Any]) -> List[str]:
+    """Повертає список колонок, де значення порожнє або відсутнє."""
     missing = []
-    for field, question in REQUIRED_FIELDS_MAP.items():
-        # Перевіряємо, чи поле існує і чи воно не пусте
-        val = profile.get(field)
+    for f in ONBOARDING_FIELDS:
+        val = profile.get(f["col"])
         if not val or str(val).strip() == "":
-            missing.append(field)
+            missing.append(f["col"])
     return missing
 
 
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def resolve_specialty(group: str, specialties: Dict[str, str]) -> Optional[str]:
+    """КБс-25-1 → 'Будівництво та цивільна інженерія'."""
+    m = re.search(r"^К(.+?)[сзідСЗІД]-", group.strip())
+    if not m:
+        return None
+    code = m.group(1).strip()
+    for key, val in specialties.items():
+        if key.lower() == code.lower():
+            return val
+    return None
+
+
+async def ask_onboarding_field(update: Update, col: str) -> None:
+    info  = next((f for f in ONBOARDING_FIELDS if f["col"] == col), None)
+    if not info:
+        return
+    if info["use_button"]:
+        markup = ReplyKeyboardMarkup(
+            [[KeyboardButton("📱 Поділитися номером", request_contact=True)]],
+            one_time_keyboard=True,
+            resize_keyboard=True,
+        )
+    else:
+        markup = ReplyKeyboardRemove()
+    await update.message.reply_text(info["prompt"], reply_markup=markup)
+
+
+def reset_timeout(user_id: str, chat_id: int, context: ContextTypes.DEFAULT_TYPE) -> None:
+    for job in context.job_queue.get_jobs_by_name(user_id):
+        job.schedule_removal()
+    context.job_queue.run_once(
+        _timeout_callback,
+        when=3600,
+        chat_id=chat_id,
+        name=user_id,
+        data=user_id,
+    )
+
+
+async def _timeout_callback(context: ContextTypes.DEFAULT_TYPE) -> None:
+    user_id = context.job.data
+    chat_id = context.job.chat_id
+    s = sessions.get(user_id)
+    sheet_mgr.log_event(s.get(SK.PROFILE, {}), "Session Timeout", "🕒 DELAY")
+    sessions.reset_dialog(user_id)
+    logger.info(f"[{user_id}] Session timeout.")
+    try:
+        await context.bot.send_message(chat_id=chat_id, text=UI.SESSION_EXPIRED, parse_mode="Markdown")
+    except Exception:
+        pass
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# 9.  ОБРОБНИКИ РЕЄСТРАЦІЇ (FSM)
+# ════════════════════════════════════════════════════════════════════════════════
+
+async def _finish_registration(update: Update, session: Dict[str, Any]) -> None:
+    session[SK.REG_STEP]       = RegStep.COMPLETED
+    session[SK.MISSING_FIELDS] = []
+    name = session[SK.PROFILE].get(Col.NAME, "")
+    await update.message.reply_text(
+        f"🎉 **Дані збережено!** Профіль готовий.\nЧим можу допомогти, {name}?",
+        reply_markup=ReplyKeyboardRemove(),
+        parse_mode="Markdown",
+    )
+
+
+async def handle_registration(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user_id = str(update.effective_user.id)
+    session = sessions.get(user_id)
+    text    = (update.message.text or "").strip()
+    step    = session.get(SK.REG_STEP)
+
+    # ── Крок 1: email ────────────────────────────────────────────────────────
+    if step == RegStep.WAITING_EMAIL:
+        email = text.lower()
+        if not email.endswith("@ukd.edu.ua"):
+            await update.message.reply_text(
+                "⛔ **Доступ заборонено.**\n"
+                "Приймається тільки корпоративна пошта `@ukd.edu.ua`.\nВведіть коректну адресу:",
+                parse_mode="Markdown",
+            )
+            return
+
+        wait = await update.message.reply_text("🔎 Перевіряю в базі даних…")
+        student = sheet_mgr.get_student_by_email(email)
+
+        if not student:
+            await wait.edit_text(
+                "❌ **Користувача не знайдено.**\n"
+                "Перевірте пошту або зверніться в каб. 300.",
+                parse_mode="Markdown",
+            )
+            return
+
+        sheet_mgr.link_telegram_id(email, user_id)
+        session[SK.PROFILE] = student
+        await wait.delete()
+
+        missing = get_missing_onboarding_fields(student)
+        if not missing:
+            await _finish_registration(update, session)
+        else:
+            session[SK.REG_STEP]       = RegStep.WAITING_DATA
+            session[SK.MISSING_FIELDS] = missing
+            name = student.get(Col.NAME, "")
+            await update.message.reply_text(
+                f"👋 Вітаю, {name}!\nЗаповніть відсутні дані для завершення налаштування."
+            )
+            await ask_onboarding_field(update, missing[0])
+        return
+
+    # ── Крок 2: збір даних ───────────────────────────────────────────────────
+    if step == RegStep.WAITING_DATA:
+        missing = session.get(SK.MISSING_FIELDS, [])
+        if not missing:
+            await _finish_registration(update, session)
+            return
+
+        col_name     = missing[0]
+        value_to_save = None
+
+        if col_name == Col.STUDENTS_PHONE:
+            if update.message.contact:
+                phone = update.message.contact.phone_number
+                value_to_save = phone if phone.startswith("+") else f"+{phone}"
+            else:
+                markup = ReplyKeyboardMarkup(
+                    [[KeyboardButton("📱 Поділитися номером", request_contact=True)]],
+                    one_time_keyboard=True, resize_keyboard=True,
+                )
+                await update.message.reply_text(
+                    "⛔ Потрібно натиснути кнопку **«📱 Поділитися номером»** нижче.",
+                    reply_markup=markup, parse_mode="Markdown",
+                )
+                return
+        else:
+            if not text:
+                await update.message.reply_text("⚠️ Надішліть текстову відповідь.")
+                return
+            ok, err = validate_field(col_name, text, session[SK.PROFILE])
+            if not ok:
+                await update.message.reply_text(err, parse_mode="Markdown")
+                return
+            value_to_save = text
+
+        wait = await update.message.reply_text("💾 Записую…", reply_markup=ReplyKeyboardRemove())
+        if sheet_mgr.update_field_by_telegram_id(user_id, col_name, value_to_save):
+            session[SK.PROFILE][col_name] = value_to_save
+            session[SK.MISSING_FIELDS].pop(0)
+            await wait.delete()
+
+            if session[SK.MISSING_FIELDS]:
+                await update.message.reply_text("✅ Прийнято.")
+                await ask_onboarding_field(update, session[SK.MISSING_FIELDS][0])
+            else:
+                await _finish_registration(update, session)
+        else:
+            await wait.edit_text("❌ Помилка запису. Спробуйте ще раз.")
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# 10.  ОБРОБНИКИ КОМАНД
+# ════════════════════════════════════════════════════════════════════════════════
+
+async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user_id = str(update.effective_user.id)
+    session = sessions.get(user_id)
+    reset_timeout(user_id, update.effective_chat.id, context)
+
+    student = sheet_mgr.get_student_by_telegram_id(user_id)
+    if student:
+        missing = get_missing_onboarding_fields(student)
+        session[SK.PROFILE] = student
+        if missing:
+            session[SK.REG_STEP]       = RegStep.WAITING_DATA
+            session[SK.MISSING_FIELDS] = missing
+            await update.message.reply_text("⚠️ **Потрібне оновлення даних.**", parse_mode="Markdown")
+            await ask_onboarding_field(update, missing[0])
+        else:
+            session[SK.REG_STEP] = RegStep.COMPLETED
+            name = student.get(Col.NAME, "")
+            await update.message.reply_text(
+                f"👋 З поверненням, {name}!\nЧим можу допомогти?", parse_mode="Markdown"
+            )
+    else:
+        session[SK.REG_STEP] = RegStep.WAITING_EMAIL
+        session[SK.PROFILE]  = {}
+        await update.message.reply_text(
+            "👋 **Вітаю в системі E-College UKD!**\n\n"
+            "🔐 Для початку роботи введіть **корпоративну пошту** (`mail@ukd.edu.ua`):",
+            parse_mode="Markdown",
+            reply_markup=ReplyKeyboardRemove(),
+        )
+
+
+async def cmd_newdoc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user_id = str(update.effective_user.id)
+    sessions.reset_dialog(user_id)
+    await update.message.reply_text(
+        "📝 **Нова заява**\n\nЯку заяву хочете оформити?\n"
+        "(Наприклад: *«Пропуск занять»*, *«Академвідпустка»* тощо)",
+        parse_mode="Markdown",
+    )
+
+
+async def cmd_edit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user_id = str(update.effective_user.id)
+    sessions.get(user_id)[SK.MODE] = BotMode.EDITING
+    await update.message.reply_text(
+        "✏️ **Режим редагування**\n\n"
+        "Можна змінити: **групу** або **номер телефону** (свій або представника).\n"
+        "Просто напишіть нові дані. Щоб вийти — /cancel",
+        parse_mode="Markdown",
+    )
+
+
+async def cmd_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user_id = str(update.effective_user.id)
+    session = sessions.get(user_id)
+    mode    = session.get(SK.MODE, BotMode.NORMAL)
+
+    if mode == BotMode.EDITING:
+        session[SK.MODE] = BotMode.NORMAL
+        tmpl = session.get(SK.ACTIVE_TEMPLATE)
+        reply = (
+            f"✅ Редагування завершено.\nПовертаємось до: **{tmpl}**."
+            if tmpl
+            else "✅ Редагування завершено."
+        )
+        await update.message.reply_text(reply, parse_mode="Markdown")
+    else:
+        sessions.reset_dialog(user_id)
+        await update.message.reply_text(
+            "🔄 **Діалог очищено.** Можете починати спочатку.",
+            parse_mode="Markdown",
+        )
+
+
+async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.message.reply_text(
+        "🤖 **Довідка:**\n\n"
+        "/start — головне меню\n"
+        "/newdoc — нова заява\n"
+        "/edit — змінити групу або телефон\n"
+        "/cancel — скасувати / вийти з редагування\n\n"
+        "Просто напишіть, що потрібно (наприклад: *«Заява на пропуск»*) — "
+        "бот підготує документ і відправить на друк.\n\n"
+        "Питання по роботі боту: каб. 300, Білоус Святослав Олегович\n"
+        "📧 sviatoslav.bilous@ukd.edu.ua",
+        parse_mode="Markdown",
+    )
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# 11.  ГОЛОВНИЙ ОБРОБНИК ПОВІДОМЛЕНЬ
+# ════════════════════════════════════════════════════════════════════════════════
+
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = str(update.effective_user.id)
     chat_id = update.effective_chat.id
-    text = update.message.text.strip() if update.message.text else ""
+    session = sessions.get(user_id)
+    text    = (update.message.text or "").strip()
 
-    if user_id not in user_sessions:
-        user_sessions[user_id] = {
-            'history': [], 'profile': {}, 'active_template': None,
-            'msg_count': 0, 'blocked_until': None, 'mode': 'NORMAL',
-            'missing_fields': []
-        }
-    session = user_sessions[user_id]
-
-    if session.get('reg_step') != 'COMPLETED':
+    # ── Переадресація до реєстрації ──────────────────────────────────────────
+    if session.get(SK.REG_STEP) != RegStep.COMPLETED:
         await handle_registration(update, context)
         return
 
-    # === БЛОК БЕЗПЕКИ (ДОДАНО) ===
-    # Гарантує, що нові змінні існують, навіть якщо сесія створена давно
-    if 'msg_count' not in session: session['msg_count'] = 0
-    if 'blocked_until' not in session: session['blocked_until'] = None
-    if 'mode' not in session: session['mode'] = 'NORMAL'
-    if 'missing_fields' not in session: session['missing_fields'] = []
-
+    # ── Нетекстові повідомлення ───────────────────────────────────────────────
     if not text and not update.message.contact:
+        if any([
+            update.message.voice, update.message.video, update.message.audio,
+            update.message.document, update.message.photo, update.message.sticker,
+            update.message.location, update.message.animation, update.message.video_note,
+        ]):
+            await update.message.reply_text(UI.NON_TEXT, parse_mode="Markdown")
+        return
 
-        # Перелік того, на що ми реагуємо попередженням
-        if (update.message.voice or update.message.video or update.message.video_note or
-                update.message.audio or update.message.document or update.message.photo or
-                update.message.sticker or update.message.location or update.message.animation):
-            await update.message.reply_text(
-                "⚠️ **Наразі я - текстовий бот.**\n"
-                "Я не вмію слухати голосові, дивитися відео чи файли.\n"
-                "Будь ласка, напишіть ваше запитання текстом ✍️",
-                parse_mode="Markdown"
-            )
-            # Ми просто виходимо з функції. Стан сесії (session) не змінюється.
-            # Бот "забуває", що це повідомлення було, і чекає наступного.
+    # ── Антиспам ──────────────────────────────────────────────────────────────
+    blocked_until = session.get(SK.BLOCKED_UNTIL)
+    if blocked_until:
+        if datetime.datetime.now() < blocked_until:
+            return
+        session[SK.BLOCKED_UNTIL] = None
+        session[SK.MSG_COUNT]     = 0
+
+    mode = session.get(SK.MODE, BotMode.NORMAL)
+    if mode == BotMode.NORMAL and not session.get(SK.ACTIVE_TEMPLATE):
+        session[SK.MSG_COUNT] += 1
+        if session[SK.MSG_COUNT] > 10:
+            session[SK.BLOCKED_UNTIL] = datetime.datetime.now() + timedelta(hours=1)
+            session[SK.HISTORY]       = []
+            session[SK.MSG_COUNT]     = 0
+            sheet_mgr.log_event(session.get(SK.PROFILE, {}), "SPAM FILTER", "🚫 BLOCKED")
+            logger.warning(f"[{user_id}] SPAM BLOCK.")
+            await update.message.reply_text(UI.SPAM_BLOCK, parse_mode="Markdown")
             return
 
-    # 2. АНТИСПАМ: Перевірка БАНУ
-    if session.get('blocked_until'):
-        if datetime.datetime.now() < session['blocked_until']:
-            logger.info(f"[{user_id}] User BLOCKED. Ignoring message.")
-            return  # Ігноруємо
-        else:
-            # Бан закінчився
-            session['blocked_until'] = None
-            session['msg_count'] = 0
-            logger.info(f"[{user_id}] User UNBLOCKED.")
+    reset_timeout(user_id, chat_id, context)
 
-    if session['mode'] == 'ONBOARDING':
-        # Якщо користувач хоче вийти
-        if text == "/cancel":
-            session['mode'] = 'NORMAL'
-            session['missing_fields'] = []
-            await update.message.reply_text("⚠️ Заповнення даних перервано.", reply_markup=ReplyKeyboardRemove())
-            return
-
-        # Беремо поточне поле, яке ми питали
-        if session['missing_fields']:
-            current_field = session['missing_fields'][0]
-            value_to_save = None
-
-            if update.message.contact:
-                phone_num = update.message.contact.phone_number
-                # Telegram може надсилати номер без "+", додамо якщо треба
-                if not phone_num.startswith('+'):
-                    phone_num = '+' + phone_num
-                value_to_save = phone_num
-                # Б) Якщо користувач все ж таки ввів текст (для телефону або іншого поля)
-            elif text:
-                value_to_save = text
-                # В) Якщо прислали щось не те (наприклад, стікер замість контакту)
-            else:
-                await update.message.reply_text(
-                    "⚠️ Будь ласка, надішліть текстову відповідь або скористайтеся кнопкою.")
-                return
-
-                # 1. Валідація номера представника (Анти-Дублікат)
-            if current_field == "PARENTS_NAME":
-                student_name = session['profile'].get('STUDENTS_NAME', "")
-
-                # Нормалізація: переводимо в нижній регістр і розбиваємо на множину слів
-                # Це дозволяє зрозуміти, що "Іванов Іван" == "Іван Іванов"
-                s_parts = set(student_name.lower().split())
-                p_parts = set(str(value_to_save).lower().split())
-
-                # Перевірка:
-                # 1. Якщо набори слів ідентичні (студент ввів себе)
-                # 2. Якщо введено менше 2 слів (наприклад, тільки прізвище або ім'я)
-                if s_parts == p_parts:
-                    await update.message.reply_text(
-                        "⛔ **Помилка:** Ви ввели власне ім'я.\n"
-                        "Необхідно вказати ПІБ одного з батьків (або опікунів).\n"
-                        "Будь ласка, введіть коректні дані."
-                    )
-                    return  # Зупиняємо, не зберігаємо
-
-                if len(p_parts) < 2:
-                    await update.message.reply_text(
-                        "⚠️ **Уточнення:** Будь ласка, введіть повне ПІБ (прізвище, ім'я, та по-батькові).\n"
-                        "Наприклад: *Шевченко Андрій Миколайович*"
-                    )
-                    return
-
-                # 2. ПЕРЕВІРКА ТЕЛЕФОНУ (PARENTS_PHONE)
-            if current_field == "PARENTS_PHONE":
-                student_phone = session['profile'].get('STUDENTS_PHONE') or session['profile'].get('Phone') or ""
-
-                def get_significant_digits(phone_raw):
-                    """Залишає тільки 9 останніх цифр (без коду країни 380)"""
-                    clean = re.sub(r'\D', '', str(phone_raw))  # Тільки цифри
-                    return clean[-9:] if len(clean) >= 9 else clean
-
-                s_digits = get_significant_digits(student_phone)
-                p_digits = get_significant_digits(value_to_save)
-
-                # Логуємо для перевірки (можна прибрати потім)
-                logger.info(f"[{user_id}] Comparing Phones: Student({s_digits}) vs Parent({p_digits})")
-
-                if s_digits and s_digits == p_digits:
-                    await update.message.reply_text(
-                        "⛔ **Помилка:** Ви ввели свій власний номер.\n"
-                        "Нам потрібен номер когось із представників для екстреного зв'язку.\n"
-                        "Будь ласка, введіть інший номер (батька, матері або опікуна)."
-                    )
-                    return  # Зупиняємо
-
-                # 2. Валідація Дати (Базова перевірка формату)
-            if current_field == "DATE_OF_BIRTH":
-                # Перевіряємо, чи схоже це на дату (цифри і крапки)
-                if not re.match(r'^\d{2}\.\d{2}\.\d{4}$', value_to_save):
-                    await update.message.reply_text(
-                        "⚠️ Невірний формат. Введіть дату як **ДД.ММ.РРРР** (наприклад, 07.02.2002).",
-                        parse_mode="Markdown")
-                    return
-
-                # --- ЗБЕРЕЖЕННЯ ---
-                # Видаляємо клавіатуру перед збереженням
-            wait_msg = await update.message.reply_text("💾 Зберігаю...", reply_markup=ReplyKeyboardRemove())
-
-            if sheet_mgr.update_student_field(user_id, current_field, value_to_save):
-                session['profile'][current_field] = value_to_save
-                session['missing_fields'].pop(0)  # Видаляємо питання зі списку
-                await context.bot.delete_message(chat_id, wait_msg.message_id)
-            else:
-                await update.message.reply_text("❌ Помилка запису в базу. Спробуйте ще раз.")
-                return
-
-            # --- НАСТУПНИЙ КРОК ---
-            if session['missing_fields']:
-                next_field = session['missing_fields'][0]
-                await update.message.reply_text("✅ Прийнято.")
-                await ask_next_field(update, context, next_field)
-                return
-            else:
-                session['mode'] = 'NORMAL'
-                await update.message.reply_text(
-                    "🎉 **Всі дані успішно збережено!**\nПрофіль готовий. Чим можу допомогти?",
-                    reply_markup=ReplyKeyboardRemove(),
-                    parse_mode="Markdown"
-                )
-                return
-
-    # 3. АНТИСПАМ: Лічильник
-    if session['mode'] == 'NORMAL' and not session.get('active_template'):
-        session['msg_count'] = session.get('msg_count', 0) + 1
-        logger.info(f"[{user_id}] Spam Counter: {session['msg_count']}/10")
-
-        # Якщо більше 10 - БАН
-        if session['msg_count'] > 10:
-            block_time = datetime.datetime.now() + timedelta(hours=1)
-            session['blocked_until'] = block_time
-
-            logger.warning(f"[{user_id}] 🚫 SPAM BLOCK triggered.")
-            sheet_mgr.log_event(session.get('profile', {}), "SPAM FILTER", "🚫 BLOCKED (1h)")
-
-            await update.message.reply_text(
-                "⛔ **Система визначила вашу поведінку як спам.**\n\n"
-                "Ви надіслали занадто багато повідомлень без конкретної мети.\n"
-                "⏳ Бот тимчасово заблокований для вас на 1 годину.\n"
-                "Якщо у вас є термінове питання — зверніться в Дирекцію коледжу."
-                , parse_mode="Markdown")
-
-            # Очистка, щоб після розбану почати з нуля
-            session['history'] = []
-            session['msg_count'] = 0
-            return
-
-    # Скидаємо таймер "антихвіст"
-    reset_timeout_timer(user_id, chat_id, context)
-
-    # --- АВТОРИЗАЦІЯ ---
-    if not session.get('profile'):
-        # Спроба DB (раптом перезапуск)
-        student_db = sheet_mgr.get_student_data(user_id)
-        if student_db:
-            session['profile'] = student_db
-            logger.info(f"[{user_id}] Silent Auth Success.")
-            if text == "/start":
-                await update.message.reply_text(f"👋 З поверненням, {student_db.get('STUDENTS_NAME')}! Радий бачити. Чим можу допомогти?", parse_mode="Markdown")
-                return
-        else:
-            # Перевірка Email
-            if "@ukd.edu.ua" not in text.lower():
-                await update.message.reply_text("🔒 Пошта повинна бути у форматі @ukd.edu.ua.", parse_mode="Markdown")
-                return
-
-            msg = await update.message.reply_text("🔎 Шукаю вас у базі...", parse_mode="Markdown")
-            student = sheet_mgr.get_student_by_email(text)
-
-            if student:
-                sheet_mgr.link_telegram_id(text, user_id)
-                session['profile'] = student
-                logger.info(f"[{user_id}] Auth Linked via Email: {text}")
-                await context.bot.delete_message(chat_id, msg.message_id)
-                await update.message.reply_text(f"✅ Вітаю, {student.get('STUDENTS_NAME')}! Ви авторизовані.", parse_mode="Markdown")
-
-                missing = check_missing_fields(student)
-                if missing:
-                    session['missing_fields'] = missing
-                    session['mode'] = 'ONBOARDING'
-
-                    first_field = missing[0]
-                    question = REQUIRED_FIELDS_MAP[first_field]
-
-                    await update.message.reply_text(
-                        "⚠️ **Увага!** У вашому профілі не вистачає деяких даних, необхідних для заяв.\n"
-                        "Будь ласка, заповніть їх зараз (це потрібно зробити один раз).\n\n"
-                        f"👉 {question}",
-                        parse_mode="Markdown"
-                    )
-                    return  # Зупиняємось, чекаємо відповіді користувача
-            else:
-                logger.warning(f"[{user_id}] Auth Failed: Email {text} not found.")
-                await context.bot.edit_message_text(chat_id, msg.message_id, text="⛔ Пошту не знайдено. Спробуйте ще раз або зверніться у каб.300 до Білоуса Святослава Олеговича")
-            return
-
-    # --- ШІ ОБРОБКА ---
-    session['history'].append({"role": "user", "content": text})
+    # ── AI-обробка ────────────────────────────────────────────────────────────
+    session[SK.HISTORY].append({"role": "user", "content": text})
     await context.bot.send_chat_action(chat_id, action="typing")
 
-    try:
-        templates = drive_mgr.get_available_templates()
-
-        logger.info(f"[{user_id}] 🗣️ USER MESSAGE: \"{text}\"")
-
-        analysis = brain.analyze_dialog_turn(
-            session['history'],
-            templates,
-            session['profile'],
-            session['active_template'],
-            mode=session['mode']  # <--- НОВЕ
-        )
-
-        # Для більш детальної перевірки
-        # logger.info(f"[{user_id}] 🧠 AI DECISION: {json.dumps(analysis, ensure_ascii=False)}")
-
-    except Exception as e:
-        logger.error(f"[{user_id}] Brain Critical Error: {e}")
-        await update.message.reply_text("😵 Технічна помилка.", parse_mode="Markdown")
-        return
-
-    status = analysis.get("status")
-    reply = analysis.get("bot_reply")
-    data = analysis.get("extracted_data", {})
-
-    logger.info(f"[{user_id}] AI Status: {status} | Tmpl: {analysis.get('selected_template_name')}")
-    session['history'].append({"role": "model", "content": reply})
-
-    # 1. ЗМІНА ДАНИХ
-    if status == "PROFILE_UPDATE":
-        updates = data
-        if updates:
-            key, val = list(updates.items())[0]
-
-            # --- НОВА ЛОГІКА СПЕЦІАЛЬНОСТЕЙ ---
-
-            # 1. Заборона прямого редагування спеціальності (вона автоматична)
-            if key == "SPECIALTY":
-                await update.message.reply_text(
-                    "⚠️ Спеціальність змінюється автоматично при зміні групи.\n"
-                    "Будь ласка, змініть назву групи, і спеціальність оновиться сама.",
-                    parse_mode="Markdown"
-                )
-                return
-
-            # 2. Якщо змінюється ГРУПА -> Оновлюємо також і спеціальність (візуально для юзера)
-            extra_msg = ""
-            if key == "GROUP":
-                new_spec = get_specialty_from_group(val)
-                if new_spec:
-                    # Оновлюємо в RAM (в базу писати не треба, там формула сама порахує)
-                    session['profile']['SPECIALTY'] = new_spec
-                    extra_msg = f"\n🎓 Спеціальність автоматично визначено: **{new_spec}**"
-                else:
-                    extra_msg = "\n⚠️ Не вдалося автоматично визначити спеціальність. Перевірте формат групи."
-
-            # Запис в базу
-            if sheet_mgr.update_student_field(user_id, key, val):
-                session['profile'][key] = val
-
-                # Формуємо відповідь
-                ua_names = {"GROUP": "групу", "STUDENTS_PHONE": "телефон", "PARENTS_PHONE": "телефон представника"}
-                readable_key = ua_names.get(key, key)
-
-                await update.message.reply_text(f"✅ Змінено {readable_key} на: **{val}**{extra_msg}",
-                                                parse_mode="Markdown")
-
-                if reply: await update.message.reply_text(reply, parse_mode="Markdown")
-            else:
-                await update.message.reply_text("❌ Помилка запису в базу.", parse_mode="Markdown")
-        return
-
-    # 2. ДІАЛОГ
-    if status in ["CLARIFICATION_NEEDED", "TEMPLATE_SELECTED", "WAITING_FOR_CONFIRMATION"]:
-        if reply: await update.message.reply_text(reply, parse_mode="Markdown")
-        if status == "TEMPLATE_SELECTED":
-            session['active_template'] = analysis.get("selected_template_name")
-            session['msg_count'] = 0
-        return
-
-
-    # 3. ГЕНЕРАЦІЯ
-    elif status == "READY_TO_GENERATE":
-        tmpl_name = session.get('active_template') or analysis.get("selected_template_name")
-
-        if not tmpl_name:
-            await update.message.reply_text("⚠️ Шаблон втрачено. Уточніть назву.", parse_mode="Markdown")
-            return
-
-        tmpl_obj = next((t for t in templates if t['name'] == tmpl_name), None)
-        if not tmpl_obj:
-            await update.message.reply_text("❌ Файл шаблону не знайдено.", parse_mode="Markdown")
-            return
-
-        status_msg = await update.message.reply_text("⏳ Генерую документ...", parse_mode="Markdown")
-
-        try:
-            # 1. Об'єднання даних (FIX з минулого кроку)
-            full_data = session['profile'].copy()
-            full_data.update(data)
-
-            # 2. Генерація PDF
-            await context.bot.send_chat_action(chat_id, action="upload_document")
-            pdf_bytes = drive_mgr.create_pdf_from_template(tmpl_obj['id'], tmpl_name, full_data)
-
-            pdf_file = io.BytesIO(pdf_bytes)
-            clean_name = full_data.get('STUDENTS_NAME', 'Doc').replace(' ', '_')
-            filename = f"Заява_{clean_name}.pdf"
-            pdf_file.name = filename
-
-            # 3. Відправка Email
-            await context.bot.edit_message_text(
-                chat_id=chat_id,
-                message_id=status_msg.message_id,
-                text="📤 Відправляю на пошту..."
-            )
-
-            email_body = f"Студент: {full_data.get('STUDENTS_NAME')}\nТип: {tmpl_name}"
-            email_success = email_mgr.send_email(TARGET_PRINT_EMAIL, f"ДРУК: {filename}", email_body, pdf_file,
-                                                 filename)
-
-            # 4. Логування результату в Google Sheets (НОВЕ!)
-            log_status = "✅ SUCCESS" if email_success else "❌ EMAIL FAILED"
-            sheet_mgr.log_event(full_data, tmpl_name, log_status)
-
-            # 5. Фінал для користувача
-            if email_success:
-                logger.info(f"[{user_id}] Email sent to print.")
-                final_text = "✅ Готово! Заява на друці."
-            else:
-                logger.error(f"[{user_id}] Email failed.")
-                final_text = "⚠️ Заяву згенеровано, але не вдалося відправити на друк."
-
-            await context.bot.edit_message_text(
-                chat_id=chat_id,
-                message_id=status_msg.message_id,
-                text=final_text
-            )
-
-            pdf_file.seek(0)
-            await update.message.reply_document(pdf_file, filename=filename, caption="Ваша копія 📄")
-
-            # Очистка сесії
-            session['history'] = []
-            session['active_template'] = None
-            logger.info(f"[{user_id}] Document Transaction Complete.")
-
-        except Exception as e:
-            logger.error(f"[{user_id}] Gen Error: {e}")
-            # Логуємо помилку в таблицю також!
-            sheet_mgr.log_event(session.get('profile', {}), tmpl_name, f"🔥 CRITICAL ERROR: {str(e)}")
-
-            await context.bot.edit_message_text(
-                chat_id=chat_id,
-                message_id=status_msg.message_id,
-                text=f"❌ Помилка: {e}"
-            )
-
-    else:
-        # Fallback
-        if reply: await update.message.reply_text(reply, parse_mode="Markdown")
-
-
-async def session_timeout_callback(context: ContextTypes.DEFAULT_TYPE):
-    """Спрацьовує, якщо користувач мовчав 60 хвилин"""
-    user_id = context.job.data
-    chat_id = context.job.chat_id
-
-    # Логування події "TIMEOUT" в таблицю
-    if user_id in user_sessions:
-        profile = user_sessions[user_id].get('profile', {})
-        # Записуємо в Logs: "Session Timeout", статус "🕒 DELAY"
-        sheet_mgr.log_event(profile, "Session Timeout", "🕒 DELAY")
-
-        # Очищення сесії
-        user_sessions[user_id]['history'] = []
-        user_sessions[user_id]['active_template'] = None
-        user_sessions[user_id]['msg_count'] = 0  # Скидаємо лічильник спаму
-
-        logger.info(f"[{user_id}] Session Timeout (Cleaned history).")
-
-        try:
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text="⏳ **Сесію завершено через неактивність (60 хв).**\n"
-                     "Якщо бажаєте створити нову заяву — просто напишіть запит знову.",
-                parse_mode="Markdown"
-            )
-        except:
-            pass
-
-
-def reset_timeout_timer(user_id, chat_id, context):
-    """Скидає таймер на 60 хвилин (3600 сек)"""
-    jobs = context.job_queue.get_jobs_by_name(str(user_id))
-    for job in jobs: job.schedule_removal()
-
-    context.job_queue.run_once(
-        session_timeout_callback,
-        3600,  # <--- ЗМІНЕНО НА 60 ХВИЛИН
-        chat_id=chat_id,
-        name=str(user_id),
-        data=user_id
+    templates = drive_mgr.get_templates()
+    analysis  = brain.analyze(
+        session[SK.HISTORY],
+        templates,
+        session[SK.PROFILE],
+        session[SK.ACTIVE_TEMPLATE],
+        mode=mode,
     )
 
+    status    = analysis.get("status", "")
+    reply_txt = analysis.get("bot_reply", "")
+    data      = analysis.get("extracted_data") or {}
 
-async def post_init(application: Application):
+    logger.info(f"[{user_id}] status={status} | tmpl={analysis.get('selected_template_name')}")
+    session[SK.HISTORY].append({"role": "model", "content": reply_txt})
+
+    # ── 1. Оновлення профілю ──────────────────────────────────────────────────
+    if status == "PROFILE_UPDATE":
+        await _handle_profile_update(update, user_id, session, data, reply_txt)
+        return
+
+    # ── 2. Діалог / уточнення ─────────────────────────────────────────────────
+    if status in ("CLARIFICATION_NEEDED", "TEMPLATE_SELECTED", "WAITING_FOR_CONFIRMATION"):
+        if reply_txt:
+            await update.message.reply_text(reply_txt, parse_mode="Markdown")
+        if status == "TEMPLATE_SELECTED":
+            session[SK.ACTIVE_TEMPLATE] = analysis.get("selected_template_name")
+            session[SK.MSG_COUNT]       = 0
+        return
+
+    # ── 3. Генерація документа ────────────────────────────────────────────────
+    if status == "READY_TO_GENERATE":
+        await _handle_generate(update, context, user_id, session, data)
+        return
+
+    # ── 4. Невідомий запит — сповістити розробника ────────────────────────────
+    if status == "UNKNOWN_INTENT":
+        await update.message.reply_text(UI.UNKNOWN_INTENT, parse_mode="Markdown")
+        await dev_notifier.notify(
+            bot     = context.bot,
+            user_id = user_id,
+            profile = session[SK.PROFILE],
+            message = text,
+            history = session[SK.HISTORY],
+        )
+        return
+
+    # ── Fallback ──────────────────────────────────────────────────────────────
+    if reply_txt:
+        await update.message.reply_text(reply_txt, parse_mode="Markdown")
+
+
+async def _handle_profile_update(
+    update: Update,
+    user_id: str,
+    session: Dict[str, Any],
+    data: Dict[str, Any],
+    ai_reply: str,
+) -> None:
+    if not data:
+        return
+    col, val = next(iter(data.items()))
+
+    if col not in Col.EDITABLE:
+        await update.message.reply_text(
+            f"⚠️ Поле `{col}` не можна редагувати через бота.\n"
+            "Зверніться до адміністрації коледжу.",
+            parse_mode="Markdown",
+        )
+        return
+
+    extra = ""
+    if col == Col.GROUP:
+        spec = resolve_specialty(str(val), specialties)
+        if spec:
+            session[SK.PROFILE][Col.SPECIALTY] = spec
+            extra = f"\n🎓 Спеціальність: **{spec}**"
+        else:
+            extra = "\n⚠️ Не вдалося визначити спеціальність. Перевірте формат групи."
+
+    if sheet_mgr.update_field_by_telegram_id(user_id, col, val):
+        session[SK.PROFILE][col] = val
+        ua = {Col.GROUP: "групу", Col.STUDENTS_PHONE: "телефон", Col.PARENTS_PHONE: "телефон представника"}
+        await update.message.reply_text(
+            f"✅ Змінено {ua.get(col, col)}: **{val}**{extra}", parse_mode="Markdown"
+        )
+        if ai_reply:
+            await update.message.reply_text(ai_reply, parse_mode="Markdown")
+    else:
+        await update.message.reply_text("❌ Помилка запису в базу.", parse_mode="Markdown")
+
+
+async def _handle_generate(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    user_id: str,
+    session: Dict[str, Any],
+    ai_data: Dict[str, Any],
+) -> None:
+    chat_id   = update.effective_chat.id
+    tmpl_name = session.get(SK.ACTIVE_TEMPLATE) or ai_data.get("selected_template_name")
+
+    if not tmpl_name:
+        await update.message.reply_text("⚠️ Шаблон не визначено. Уточніть тип заяви.")
+        return
+
+    templates = drive_mgr.get_templates()
+    tmpl_obj  = next((t for t in templates if t["name"] == tmpl_name), None)
+    if not tmpl_obj:
+        await update.message.reply_text("❌ Файл шаблону не знайдено на Google Drive.")
+        return
+
+    status_msg = await update.message.reply_text("⏳ Генерую документ…")
+
+    try:
+        full_data = {**session[SK.PROFILE], **ai_data}
+        await context.bot.send_chat_action(chat_id, action="upload_document")
+        pdf_bytes = drive_mgr.create_pdf(tmpl_obj["id"], tmpl_name, full_data)
+
+        pdf_file  = io.BytesIO(pdf_bytes)
+        clean     = str(full_data.get(Col.NAME, "Doc")).replace(" ", "_")
+        filename  = f"Заява_{clean}.pdf"
+        pdf_file.name = filename
+
+        await status_msg.edit_text("📤 Відправляю на пошту…")
+
+        email_body    = f"Студент: {full_data.get(Col.NAME)}\nТип: {tmpl_name}"
+        email_success = email_mgr.send(
+            Env.TARGET_PRINT_EMAIL, f"ДРУК: {filename}", email_body, pdf_file, filename
+        )
+
+        log_status = "✅ SUCCESS" if email_success else "❌ EMAIL FAILED"
+        sheet_mgr.log_event(full_data, tmpl_name, log_status)
+
+        final = "✅ Готово! Заяву відправлено на друк." if email_success else "⚠️ Заяву згенеровано, але не вдалося відправити на друк."
+        await status_msg.edit_text(final)
+
+        pdf_file.seek(0)
+        await update.message.reply_document(pdf_file, filename=filename, caption="Ваша копія 📄")
+
+        sessions.reset_dialog(user_id)
+        logger.info(f"[{user_id}] Document generated: {tmpl_name}")
+
+    except Exception as exc:
+        logger.error(f"[{user_id}] generate error: {exc}")
+        sheet_mgr.log_event(session.get(SK.PROFILE, {}), tmpl_name, f"🔥 ERROR: {exc}")
+        await status_msg.edit_text(f"❌ Помилка генерації: {exc}")
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# 12.  ІНІЦІАЛІЗАЦІЯ ТА ЗАПУСК
+# ════════════════════════════════════════════════════════════════════════════════
+
+def _get_google_creds() -> Credentials:
+    creds = None
+    if os.path.exists("token.json"):
+        creds = Credentials.from_authorized_user_file("token.json", GOOGLE_SCOPES)
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow  = InstalledAppFlow.from_client_secrets_file(Env.CLIENT_SECRET_FILE, GOOGLE_SCOPES)
+            creds = flow.run_local_server(port=0)
+        with open("token.json", "w") as fh:
+            fh.write(creds.to_json())
+    return creds
+
+
+# Глобальні сервіси (ініціалізуються один раз при старті)
+_creds      = _get_google_creds()
+drive_mgr   = DriveManager(_creds)
+sheet_mgr   = SheetManager(_creds, Env.SPREADSHEET_ID)
+email_mgr   = EmailManager(_creds)
+brain       = GeminiBrain()
+dev_notifier = DevNotifier(email_mgr)
+
+# Завантаження спеціальностей із Config-аркуша (один раз при старті)
+specialties: Dict[str, str] = sheet_mgr.load_specialties()
+logger.info(f"✅ Loaded {len(specialties)} specialties from Config sheet.")
+
+
+async def _post_init(application: Application) -> None:
     commands = [
-        BotCommand("start", "🏠 Головна"),
+        BotCommand("start",  "🏠 Головна"),
         BotCommand("newdoc", "📝 Нова заява"),
-        BotCommand("edit", "✏️ Редагувати дані"),
+        BotCommand("edit",   "✏️ Редагувати дані"),
         BotCommand("cancel", "❌ Скасувати / Назад"),
-        BotCommand("help", "ℹ️ Допомога")
+        BotCommand("help",   "ℹ️ Допомога"),
     ]
     await application.bot.set_my_commands(commands)
 
-    mode = os.getenv("MODE", "PROD")  # За замовчуванням PROD
-    admin_id = os.getenv("ADMIN_ID")  # Ваш ID з .env
-
-    if mode == "DEV" and admin_id:
+    if Env.MODE == "DEV" and Env.ADMIN_ID:
         try:
             await application.bot.send_message(
-                chat_id=admin_id,
-                text="👨‍💻 **УВАГА:** Бот запущено в локальному (DEV) режимі!",
-                parse_mode="Markdown"
+                chat_id=Env.ADMIN_ID,
+                text="👨‍💻 **[DEV]** Бот запущено в режимі розробки.",
+                parse_mode="Markdown",
             )
-        except Exception as e:
-            logger.warning(f"Не вдалося надіслати сповіщення адміну: {e}")
+        except Exception as exc:
+            logger.warning(f"Admin notify failed: {exc}")
 
-    logger.info("✅ Bot Started.")
-
-
-async def newdoc_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Ця команда просто скидає контекст і пропонує почати
-    user_id = str(update.effective_user.id)
-    if user_id in user_sessions:
-        user_sessions[user_id]['history'] = []
-        user_sessions[user_id]['active_template'] = None
-
-    await update.message.reply_text(
-        "📝 **Створення нового документа**\n\n"
-        "Яку заяву ви хочете оформити? (Наприклад: *\"Пропуск занять\"*, *\"Академвідпустка\"* тощо)",
-        parse_mode="Markdown"
-    )
+    logger.info("✅ Bot started and ready.")
 
 
-async def edit_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Вмикає режим редагування, не стираючи контекст поточної заяви"""
-    user_id = str(update.effective_user.id)
+def main() -> None:
+    logger.info("🤖 Starting eCollege Bot…")
+    app = ApplicationBuilder().token(Env.TELEGRAM_TOKEN).post_init(_post_init).build()
 
-    # Ініціалізація сесії, якщо немає
-    if user_id not in user_sessions:
-        user_sessions[user_id] = {'history': [], 'profile': {}, 'active_template': None, 'mode': 'NORMAL'}
+    app.add_handler(CommandHandler("start",  cmd_start))
+    app.add_handler(CommandHandler("newdoc", cmd_newdoc))
+    app.add_handler(CommandHandler("edit",   cmd_edit))
+    app.add_handler(CommandHandler("cancel", cmd_cancel))
+    app.add_handler(CommandHandler("help",   cmd_help))
+    app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_message))
 
-    # Вмикаємо режим редагування
-    user_sessions[user_id]['mode'] = 'EDITING'
-
-    """Інструкція для редагування"""
-    await update.message.reply_text(
-        "✏️ **Режим редагування активовано.**\n\n"
-        "Зараз ви можете написати нові дані (наприклад: *\"Нова група КІПЗс-25-1\"* або *\"Мій телефон 050...\"*).\n"
-        "Редагування можливе лише у разі зміни номера телефону та групи. Інші поля відредаговані не будуть\n"
-        "Бот сприйматиме це тільки як оновлення профілю.\n\n"
-        "❌ Щоб завершити редагування і повернутися назад, натисніть /cancel"
-        , parse_mode="Markdown")
-
-
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    help_text = (
-        "🤖 **Довідка по командам:**\n\n"
-        "/start - Почати роботу / Головне меню\n"
-        "/newdoc - Створити нову заяву\n"
-        "/edit - Змінити дані (Групу, Номер телефону)\n"
-        "/cancel - Скасувати дію або вийти з редагування\n\n"
-        "ℹ️ *Як користуватися:*\n"
-        "Просто напишіть мені, що вам потрібно (наприклад: *\"Хочу заяву на відрахування\"*). "
-        "Я підготую документ, покажу вам ваші дані для перевірки, і якщо все ок — відправлю його на друк.\n\n"
-        "Для отримання допомоги у роботі з ботом - звертайтеся у каб. 300 до Білоуса Святослава Олеговича або на пошту sviatoslav.bilous@ukd.edu.ua"
-    )
-    await update.message.reply_text(help_text, parse_mode="Markdown")
-
-
-async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Розумна скасування: вихід з редагування АБО скидання діалогу"""
-    user_id = str(update.effective_user.id)
-
-    if user_id not in user_sessions:
-        await update.message.reply_text("🤷‍♂️ Немає активних дій для скасування.")
-        return
-
-    session = user_sessions[user_id]
-    current_mode = session.get('mode', 'NORMAL')
-
-    # СЦЕНАРІЙ 1: Вихід з режиму редагування (повернення до заяви)
-    if current_mode == 'EDITING':
-        session['mode'] = 'NORMAL'
-
-        # Перевіряємо, чи була активна заява до цього
-        if session.get('active_template'):
-            await update.message.reply_text(
-                f"✅ Редагування завершено.\n"
-                f"Повертаємось до оформлення документа: **{session['active_template']}**.\n"
-                f"Що пишемо далі?"
-            )
-        else:
-            await update.message.reply_text("✅ Редагування завершено. Чим можу допомогти ще?")
-
-    # СЦЕНАРІЙ 2: Повне скидання (якщо ми не редагували, а просто спілкувались)
-    else:
-        session['history'] = []
-        session['active_template'] = None
-        session['msg_count'] = 0
-        await update.message.reply_text(
-            "🔄 **Діалог очищено.**\n"
-            "Всі попередні контексти скинуто. Ви можете почати спочатку.",
-            parse_mode="Markdown"
-        )
+    app.run_polling()
 
 
 if __name__ == "__main__":
-    logger.info("🤖 Bot Starting...")
-    application = ApplicationBuilder().token(TELEGRAM_TOKEN).post_init(post_init).build()
-
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("newdoc", newdoc_command))
-    application.add_handler(CommandHandler("edit", edit_command))
-    application.add_handler(CommandHandler("cancel", cancel_command))
-    application.add_handler(CommandHandler("help", help_command))
-
-    # application.add_handler(MessageHandler(filters.TEXT | filters.CONTACT & (~filters.COMMAND), handle_message))
-    application.add_handler(MessageHandler(filters.ALL & (~filters.COMMAND), handle_message))
-
-    application.run_polling()
+    main()
