@@ -813,7 +813,7 @@ TEMPLATE_CONFIG: Dict[str, Dict[str, Any]] = {
     },
     "Заява про відпрацювання за індивідуальним графіком": {
         "description": "Студент бажає відпрацювати пропущені заняття не в очному форматі.",
-        "required_fields": ["REASON"],
+        "required_fields": ["REASON", "DATE_FROM"],
         "nuances": "Пишіть викладачам на корпоративну пошту (@ukd.edu.ua).",
     },
     "Заява про відрахування за власним бажанням": {
@@ -854,22 +854,22 @@ TEMPLATE_CONFIG: Dict[str, Dict[str, Any]] = {
     },
     "Заява про перевід на денну форму навчання": {
         "description": "Перевід на денну форму.",
-        "required_fields": ["SPECIALTY"],
+        "required_fields": ["SPECIALTY", "DATE_FROM"],
         "nuances": "Перевід — з наступного семестру. Код групи зміниться на *с.",
     },
     "Заява про перевід на заочну форму навчання": {
         "description": "Перевід на заочну форму (3–4 курс).",
-        "required_fields": ["SPECIALTY"],
+        "required_fields": ["SPECIALTY", "DATE_FROM"],
         "nuances": "Перевід — з наступного семестру. Код групи зміниться на *з.",
     },
     "Заява про перевід на індивідуальну форму навчання": {
         "description": "Перевід на індивідуальну форму.",
-        "required_fields": ["SPECIALTY"],
+        "required_fields": ["SPECIALTY", "DATE_FROM"],
         "nuances": "Вартість індивідуальної форми вища, ніж індивідуального графіка.",
     },
     "Заява про перевід на іншу спеціальність": {
         "description": "Зміна спеціальності.",
-        "required_fields": ["SUBJECT", "SPECIALTY_TO"],
+        "required_fields": ["SUBJECT", "SPECIALTY_TO", "DATE_FROM"],
         "nuances": "Перевід — з наступного семестру. Доплата уточнюється в бухгалтерії.",
     },
     "Заява про повторний курс у дистанційному форматі": {
