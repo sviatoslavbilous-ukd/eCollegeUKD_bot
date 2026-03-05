@@ -1530,10 +1530,14 @@ async def _handle_generate(
 
         await status_msg.edit_text("📤 Відправляю на пошту…")
 
-        email_body    = f"Студент: {full_data.get(Col.NAME)}\nТип: {tmpl_name}"
-        email_success = email_mgr.send(
-            Env.TARGET_PRINT_EMAIL, f"ДРУК: {filename}", email_body, pdf_file, filename
-        )
+        email_body   = f"Студент: {full_data.get(Col.NAME)}\nТип: {tmpl_name}"
+        # TARGET_PRINT_EMAIL може містити кілька адрес через кому
+        print_emails = [e.strip() for e in (Env.TARGET_PRINT_EMAIL or "").split(",") if e.strip()]
+        email_success = False
+        for _email in print_emails:
+            pdf_file.seek(0)
+            if email_mgr.send(_email, f"ДРУК: {filename}", email_body, pdf_file, filename):
+                email_success = True
 
         log_status = "✅ SUCCESS" if email_success else "❌ EMAIL FAILED"
         sheet_mgr.log_event(full_data, tmpl_name, log_status)
