@@ -947,6 +947,11 @@ class GeminiBrain:
 - REASON — коротка конструкція в орудному відмінку (напр. "сімейними обставинами").
 - Відносні дати ("вчора", "минулого тижня") → конкретна "ДД.ММ.РРРР".
 - СПОЧАТКУ підтвердження даних (WAITING_FOR_CONFIRMATION), потім READY_TO_GENERATE.
+- При WAITING_FOR_CONFIRMATION форматуй дані для підтвердження ОБОВ'ЯЗКОВО з нового рядка
+  для кожного пункту, наприклад:
+  "Підтвердьте дані:\n👤 ПІБ: Іваненко Іван\n🎓 Група: КІПЗс-25-1\n📱 Телефон: +380..."
+- selected_template_name ОБОВ'ЯЗКОВО передавай у відповіді при WAITING_FOR_CONFIRMATION
+  та READY_TO_GENERATE — навіть якщо шаблон вже був обраний раніше.
 - Дозволені оновлення профілю: STUDENTS_PHONE, PARENTS_PHONE, GROUP.
   При зміні GROUP — SPECIALTY оновлюється автоматично, не проси його окремо.
 - UNKNOWN_INTENT: якщо запит студента НЕ стосується жодного шаблону, НЕ є
@@ -1421,9 +1426,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if status in ("CLARIFICATION_NEEDED", "TEMPLATE_SELECTED", "WAITING_FOR_CONFIRMATION"):
         if reply_txt:
             await update.message.reply_text(reply_txt, parse_mode="Markdown")
+        # Зберігаємо шаблон при будь-якому статусі де він відомий
+        tmpl_from_ai = analysis.get("selected_template_name")
+        if tmpl_from_ai:
+            session[SK.ACTIVE_TEMPLATE] = tmpl_from_ai
         if status == "TEMPLATE_SELECTED":
-            session[SK.ACTIVE_TEMPLATE] = analysis.get("selected_template_name")
-            session[SK.MSG_COUNT]       = 0
+            session[SK.MSG_COUNT] = 0
         return
 
     # ── 3. Генерація документа ────────────────────────────────────────────────
