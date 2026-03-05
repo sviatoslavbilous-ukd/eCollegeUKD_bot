@@ -1,5 +1,6 @@
 """
 eCollege UKD Telegram Bot
+Повністю рефакторизована версія — модульна, схема-орієнтована, без "магічних рядків".
 
 Архітектура:
   - StudentFields / SessionKeys / SheetConfig  — єдині джерела правди для всіх імен колонок і ключів
@@ -28,7 +29,11 @@ from logging.handlers import TimedRotatingFileHandler
 from typing import Any, Dict, List, Optional
 
 # ── Зовнішні залежності ──────────────────────────────────────────────────────
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv as _load_dotenv
+    _HAS_DOTENV = True
+except ImportError:
+    _HAS_DOTENV = False
 
 from telegram import Update, BotCommand, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from telegram.ext import (
@@ -52,7 +57,67 @@ from email.mime.application import MIMEApplication
 # 1.  КОНФІГУРАЦІЯ ТА КОНСТАНТИ
 # ════════════════════════════════════════════════════════════════════════════════
 
-load_dotenv()
+# ════════════════════════════════════════════════════════════════════════════════
+# 0.  ЗАВАНТАЖЕННЯ КОНФІГУРАЦІЇ — Secret Manager (prod) або .env (dev/local)
+# ════════════════════════════════════════════════════════════════════════════════
+
+_GCP_PROJECT = os.getenv("GCP_PROJECT", "ecollegebot")
+
+# Імена всіх секретів, що зберігаються в Secret Manager
+_SECRET_NAMES = [
+    "TELEGRAM_TOKEN",
+    "GEMINI_API_KEY",
+    "GEMINI_AI_MODEL",
+    "SPREADSHEET_ID",
+    "TEMPLATES_FOLDER_ID",
+    "TARGET_PRINT_EMAIL",
+    "CLIENT_SECRET_FILE",
+    "ADMIN_ID",
+    "ADMIN_EMAIL",
+    "UNKNOWN_NOTIF_COOLDOWN_MIN",
+]
+
+
+def _load_from_secret_manager() -> bool:
+    """
+    Завантажує секрети з Google Cloud Secret Manager у os.environ.
+    Повертає True якщо успішно, False якщо недоступно (локальна розробка).
+    Пропускає секрети, яких немає — щоб опційні поля не ламали старт.
+    """
+    try:
+        from google.cloud import secretmanager as _sm
+        client = _sm.SecretManagerServiceClient()
+        loaded, skipped = [], []
+
+        for name in _SECRET_NAMES:
+            try:
+                path     = f"projects/{_GCP_PROJECT}/secrets/{name}/versions/latest"
+                response = client.access_secret_version(request={"name": path})
+                value    = response.payload.data.decode("utf-8").strip()
+                os.environ[name] = value
+                loaded.append(name)
+            except Exception:
+                skipped.append(name)
+
+        print(f"[SecretsLoader] ✅ Loaded: {loaded}")
+        if skipped:
+            print(f"[SecretsLoader] ⚠️  Skipped (not found): {skipped}")
+        return True
+
+    except ImportError:
+        return False
+    except Exception as exc:
+        print(f"[SecretsLoader] ❌ Secret Manager unavailable: {exc}")
+        return False
+
+
+# Спочатку пробуємо Secret Manager, fallback — .env для локальної розробки
+if not _load_from_secret_manager():
+    if _HAS_DOTENV:
+        _load_dotenv()
+        print("[SecretsLoader] 📄 Loaded from .env (local dev mode)")
+    else:
+        print("[SecretsLoader] ⚠️  No secrets source available — relying on env vars")
 
 
 class Env:
