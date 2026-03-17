@@ -1310,15 +1310,6 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
 
 
-async def cmd_newdoc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user_id = str(update.effective_user.id)
-    sessions.reset_dialog(user_id)
-    await update.message.reply_text(
-        "📝 **Нова заява**\n\nЯку заяву хочете оформити?\n"
-        "(Наприклад: *«Пропуск занять»*, *«Академвідпустка»* тощо)",
-        parse_mode="Markdown",
-    )
-
 
 async def cmd_edit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = str(update.effective_user.id)
@@ -1356,8 +1347,7 @@ async def cmd_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
         "🤖 **Довідка:**\n\n"
-        "/start — головне меню\n"
-        "/newdoc — нова заява\n"
+        "/start — головне меню / нова заява\n"
         "/edit — змінити групу або телефон\n"
         "/cancel — скасувати / вийти з редагування\n\n"
         "Просто напишіть, що потрібно (наприклад: *«Заява на пропуск»*) — "
@@ -1610,7 +1600,6 @@ logger.info(f"✅ Loaded {len(specialties)} specialties from Config sheet.")
 async def _post_init(application: Application) -> None:
     commands = [
         BotCommand("start",  "🏠 Головна"),
-        BotCommand("newdoc", "📝 Нова заява"),
         BotCommand("edit",   "✏️ Редагувати дані"),
         BotCommand("cancel", "❌ Скасувати / Назад"),
         BotCommand("help",   "ℹ️ Допомога"),
@@ -1635,7 +1624,6 @@ def main() -> None:
     app = ApplicationBuilder().token(Env.TELEGRAM_TOKEN).post_init(_post_init).build()
 
     app.add_handler(CommandHandler("start",  cmd_start))
-    app.add_handler(CommandHandler("newdoc", cmd_newdoc))
     app.add_handler(CommandHandler("edit",   cmd_edit))
     app.add_handler(CommandHandler("cancel", cmd_cancel))
     app.add_handler(CommandHandler("help",   cmd_help))
