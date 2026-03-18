@@ -148,7 +148,8 @@ GOOGLE_SCOPES = [
 class SheetName:
     STUDENTS      = "Students"
     CONFIG        = "Config"
-    LOGS          = "Logs"
+    LOGS          = "Logs"       # Apps Script логи (незмінно)
+    BOT_LOGS      = "Bot_Logs"   # Логи бота з аналітикою
     JOURNAL_LINKS = "Journal_Links"
     CHANGE_LOG    = "Change_Log"
 
@@ -229,6 +230,8 @@ class SK:
     REG_STEP             = "reg_step"
     MISSING_FIELDS       = "missing_fields"
     LAST_UNKNOWN_NOTIF   = "last_unknown_notif"   # datetime останнього сповіщення розробника
+    SESSION_START        = "session_start"         # datetime початку діалогу
+    ANALYTICS_MSG_COUNT  = "analytics_msg_count"   # лічильник повідомлень для аналітики
 
 
 class RegStep(str, Enum):
@@ -608,18 +611,38 @@ class SheetManager:
             logger.error(f"load_specialties: {exc}")
             return {}
 
-    def log_event(self, profile: Dict[str, Any], doc_type: str, status: str = "✅ SUCCESS") -> None:
-        now  = datetime.datetime.now()
-        name  = profile.get(Col.NAME, "Невідомо")
-        group = profile.get(Col.GROUP, "—")
-        body  = {"values": [[now.strftime("%d.%m.%Y"), now.strftime("%H:%M:%S"), name, group, doc_type, status]]}
+    def log_event(
+        self,
+        profile: Dict[str, Any],
+        doc_type: str,
+        status: str = "✅ SUCCESS",
+        duration_sec: Optional[int] = None,
+        msg_count: Optional[int] = None,
+    ) -> None:
+        now      = datetime.datetime.now()
+        name     = profile.get(Col.NAME, "Невідомо")
+        group    = profile.get(Col.GROUP, "—")
+        tg_id    = profile.get(Col.TELEGRAM_ID, "—")
+        dur_str  = f"{duration_sec // 60}хв {duration_sec % 60}с" if duration_sec is not None else "—"
+        msg_str  = str(msg_count) if msg_count is not None else "—"
+        row = [
+            now.strftime("%d.%m.%Y"),
+            now.strftime("%H:%M:%S"),
+            name,
+            group,
+            doc_type,
+            status,
+            dur_str,
+            msg_str,
+            str(tg_id),
+        ]
         try:
             self._svc.spreadsheets().values().append(
                 spreadsheetId=self._sid,
-                range=f"{SheetName.LOGS}!A:F",
+                range=f"{SheetName.BOT_LOGS}!A:I",
                 valueInputOption="USER_ENTERED",
                 insertDataOption="INSERT_ROWS",
-                body=body,
+                body={"values": [row]},
             ).execute()
         except Exception as exc:
             logger.error(f"log_event: {exc}")
@@ -1051,6 +1074,8 @@ def _default_session() -> Dict[str, Any]:
         SK.REG_STEP:            None,
         SK.MISSING_FIELDS:      [],
         SK.LAST_UNKNOWN_NOTIF:  None,   # datetime останнього сповіщення розробника
+        SK.SESSION_START:       None,   # datetime початку діалогу
+        SK.ANALYTICS_MSG_COUNT: 0,      # лічильник повідомлень
     }
 
 
@@ -1071,9 +1096,11 @@ class SessionStore:
 
     def reset_dialog(self, user_id: str) -> None:
         s = self.get(user_id)
-        s[SK.HISTORY]         = []
-        s[SK.ACTIVE_TEMPLATE] = None
-        s[SK.MSG_COUNT]       = 0
+        s[SK.HISTORY]              = []
+        s[SK.ACTIVE_TEMPLATE]      = None
+        s[SK.MSG_COUNT]            = 0
+        s[SK.SESSION_START]        = None
+        s[SK.ANALYTICS_MSG_COUNT]  = 0
 
     def __contains__(self, item: str) -> bool:
         return item in self._store
@@ -1139,7 +1166,9 @@ async def _timeout_callback(context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = context.job.data
     chat_id = context.job.chat_id
     s = sessions.get(user_id)
-    sheet_mgr.log_event(s.get(SK.PROFILE, {}), "Session Timeout", "🕒 DELAY")
+    _dur = int((datetime.datetime.now() - s[SK.SESSION_START]).total_seconds()) if s.get(SK.SESSION_START) else None
+    _msg = s.get(SK.ANALYTICS_MSG_COUNT)
+    sheet_mgr.log_event(s.get(SK.PROFILE, {}), "Session Timeout", "🕒 DELAY", duration_sec=_dur, msg_count=_msg)
     sessions.reset_dialog(user_id)
     logger.info(f"[{user_id}] Session timeout.")
     try:
@@ -1405,6 +1434,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     reset_timeout(user_id, chat_id, context)
 
+    # ── Трекінг сесії для аналітики ───────────────────────────────────────────
+    if session.get(SK.SESSION_START) is None:
+        session[SK.SESSION_START] = datetime.datetime.now()
+    session[SK.ANALYTICS_MSG_COUNT] = session.get(SK.ANALYTICS_MSG_COUNT, 0) + 1
+
     # ── AI-обробка ────────────────────────────────────────────────────────────
     session[SK.HISTORY].append({"role": "user", "content": text})
     await context.bot.send_chat_action(chat_id, action="typing")
@@ -1548,7 +1582,9 @@ async def _handle_generate(
                 email_success = True
 
         log_status = "✅ SUCCESS" if email_success else "❌ EMAIL FAILED"
-        sheet_mgr.log_event(full_data, tmpl_name, log_status)
+        _dur = int((datetime.datetime.now() - session.get(SK.SESSION_START, datetime.datetime.now())).total_seconds()) if session.get(SK.SESSION_START) else None
+        _msg = session.get(SK.ANALYTICS_MSG_COUNT)
+        sheet_mgr.log_event(full_data, tmpl_name, log_status, duration_sec=_dur, msg_count=_msg)
 
         final = "✅ Готово! Заяву відправлено на друк." if email_success else "⚠️ Заяву згенеровано, але не вдалося відправити на друк."
         await status_msg.edit_text(final)
