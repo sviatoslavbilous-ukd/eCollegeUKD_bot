@@ -2479,7 +2479,7 @@ def main() -> None:
     app.add_handler(CommandHandler("help",   cmd_help))
     app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_message))
 
-    app.run_polling()
+    app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
 if __name__ == "__main__":
