@@ -2329,19 +2329,23 @@ async def _handle_generate(
         if set(ai_data.keys()) - _allowed:
             logger.warning(f"[{user_id}] Filtered out ai_data keys: {set(ai_data.keys()) - _allowed}")
 
-        # Валідація дат перед генерацією
+        # Валідація дат перед генерацією — тільки якщо поле є в required_fields шаблону
+        _required = set(TEMPLATE_CONFIG.get(tmpl_name, {}).get("required_fields", []))
         _date_errors = []
         for _date_key in ("DATE_FROM", "DATE_TO"):
+            if _date_key not in _required:
+                continue
             _dval = str(_safe_ai_data.get(_date_key, "")).strip()
-            if _dval:
-                if not Regex.DATE.match(_dval):
-                    _date_errors.append(f"{_date_key}: «{_dval}» — очікується формат ДД.ММ.РРРР")
-                else:
-                    try:
-                        _d, _m, _y = map(int, _dval.split("."))
-                        datetime.date(_y, _m, _d)
-                    except ValueError:
-                        _date_errors.append(f"{_date_key}: «{_dval}» — такої дати не існує")
+            if not _dval or _dval.lower() == "none":
+                continue
+            if not Regex.DATE.match(_dval):
+                _date_errors.append(f"{_date_key}: «{_dval}» — очікується формат ДД.ММ.РРРР")
+            else:
+                try:
+                    _d, _m, _y = map(int, _dval.split("."))
+                    datetime.date(_y, _m, _d)
+                except ValueError:
+                    _date_errors.append(f"{_date_key}: «{_dval}» — такої дати не існує")
         if _date_errors:
             await status_msg.edit_text(
                 "⛔ Виявлено некоректні дати:\n" + "\n".join(f"• {e}" for e in _date_errors) +
