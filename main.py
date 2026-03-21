@@ -70,6 +70,7 @@ _SECRET_NAMES = [
     "GEMINI_AI_MODEL",
     "SPREADSHEET_ID",
     "TEMPLATES_FOLDER_ID",
+    "ARCHIVE_FOLDER_ID",
     "TARGET_PRINT_EMAIL",
     "CLIENT_SECRET_FILE",
     "ADMIN_ID",
@@ -124,6 +125,7 @@ class Env:
     """Усі змінні середовища в одному місці."""
     CLIENT_SECRET_FILE  = os.getenv("CLIENT_SECRET_FILE")
     TEMPLATES_FOLDER_ID = os.getenv("TEMPLATES_FOLDER_ID")
+    ARCHIVE_FOLDER_ID   = os.getenv("ARCHIVE_FOLDER_ID")   # папка "Архів заяв" на Drive
     SPREADSHEET_ID      = os.getenv("SPREADSHEET_ID")
     TARGET_PRINT_EMAIL  = os.getenv("TARGET_PRINT_EMAIL")
     TELEGRAM_TOKEN      = os.getenv("TELEGRAM_TOKEN")
@@ -511,6 +513,25 @@ class DriveManager:
                 except Exception:
                     pass
 
+    def save_to_archive(self, pdf_bytes: bytes, filename: str) -> str:
+        """Зберігає PDF в папку Архів заяв і повертає URL або порожній рядок."""
+        if not Env.ARCHIVE_FOLDER_ID:
+            return ""
+        try:
+            import io as _io
+            from googleapiclient.http import MediaIoBaseUpload
+            meta = {"name": filename, "parents": [Env.ARCHIVE_FOLDER_ID],
+                    "mimeType": "application/pdf"}
+            media = MediaIoBaseUpload(_io.BytesIO(pdf_bytes), mimetype="application/pdf")
+            f = self.drive_svc.files().create(
+                body=meta, media_body=media, fields="id,webViewLink"
+            ).execute()
+            logger.info(f"[DriveManager] Archived: {filename} → {f.get('webViewLink','')}")
+            return f.get("webViewLink", "")
+        except Exception as exc:
+            logger.error(f"[DriveManager] Archive failed: {exc}")
+            return ""
+
     @staticmethod
     def _fill_study_year(data: Dict[str, Any]) -> None:
         if data.get("study_year"):
@@ -639,28 +660,41 @@ class SheetManager:
         status: str = "✅ SUCCESS",
         duration_sec: Optional[int] = None,
         msg_count: Optional[int] = None,
+        extra_fields: Optional[Dict[str, Any]] = None,
+        pdf_url: str = "",
     ) -> None:
         now      = datetime.datetime.now()
         name     = profile.get(Col.NAME, "Невідомо")
         group    = profile.get(Col.GROUP, "—")
+        spec     = profile.get(Col.SPECIALTY, "—")
         tg_id    = profile.get(Col.TELEGRAM_ID, "—")
         dur_str  = f"{duration_sec // 60}хв {duration_sec % 60}с" if duration_sec is not None else "—"
         msg_str  = str(msg_count) if msg_count is not None else "—"
+        ef       = extra_fields or {}
         row = [
             now.strftime("%d.%m.%Y"),
             now.strftime("%H:%M:%S"),
             name,
+            str(tg_id),
             group,
+            spec,
             doc_type,
             status,
             dur_str,
             msg_str,
-            str(tg_id),
+            ef.get("DATE_FROM", ""),
+            ef.get("DATE_TO", ""),
+            ef.get("REASON", ""),
+            ef.get("SUBJECT", ""),
+            ef.get("LESSONS_RANGE", ""),
+            ef.get("SPECIALTY_TO", ""),
+            pdf_url,
+            "",  # Підписано секретарем — порожньо при створенні
         ]
         try:
             self._svc.spreadsheets().values().append(
                 spreadsheetId=self._sid,
-                range=f"{SheetName.BOT_LOGS}!A:I",
+                range=f"{SheetName.BOT_LOGS}!A:R",
                 valueInputOption="USER_ENTERED",
                 insertDataOption="INSERT_ROWS",
                 body={"values": [row]},
@@ -970,6 +1004,11 @@ TEMPLATE_CONFIG: Dict[str, Dict[str, Any]] = {
         "description": "Неможливість складання навчальної практики очно.",
         "required_fields": ["REASON"],
         "nuances": "Потрібен оригінал підтверджувального документа у каб. 300.",
+    },
+    "Заява про повторний курс у очному форматі": {
+        "description": "Ліквідація повторного курсу очно.",
+        "required_fields": ["SUBJECT", "REASON"],
+        "nuances": "Для кожної дисципліни — окрема заява.",
     },
     "Заява про складання сесії в усній формі у зв'язку з наявністю особливих освітніх потреб у студента": {
         "description": "Усна форма іспиту через особливі освітні потреби.",
@@ -2377,7 +2416,17 @@ async def _handle_generate(
         log_status = "✅ SUCCESS" if email_success else "❌ EMAIL FAILED"
         _dur = int((datetime.datetime.now() - session.get(SK.SESSION_START, datetime.datetime.now())).total_seconds()) if session.get(SK.SESSION_START) else None
         _msg = session.get(SK.ANALYTICS_MSG_COUNT)
-        sheet_mgr.log_event(full_data, tmpl_name, log_status, duration_sec=_dur, msg_count=_msg)
+        # Зберігаємо PDF в архів
+        _pdf_url = ""
+        if email_success and Env.ARCHIVE_FOLDER_ID:
+            pdf_file.seek(0)
+            _pdf_url = drive_mgr.save_to_archive(pdf_file.read(), filename)
+        # Витягуємо поля заяви для розширеного логу
+        _extra = {k: str(full_data.get(k, "")) for k in
+                  ("DATE_FROM", "DATE_TO", "REASON", "SUBJECT", "LESSONS_RANGE", "SPECIALTY_TO")}
+        sheet_mgr.log_event(full_data, tmpl_name, log_status,
+                            duration_sec=_dur, msg_count=_msg,
+                            extra_fields=_extra, pdf_url=_pdf_url)
 
         final = "✅ Готово! Заяву відправлено на друк." if email_success else "⚠️ Заяву згенеровано, але не вдалося відправити на друк."
         await status_msg.edit_text(final)
