@@ -1434,10 +1434,22 @@ def reset_timeout(user_id: str, chat_id: int, context: ContextTypes.DEFAULT_TYPE
     )
 
 
+def cancel_timeout(user_id: str, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Скасовує таймаут — викликати після успішного завершення діалогу."""
+    for job in context.job_queue.get_jobs_by_name(user_id):
+        job.schedule_removal()
+
+
 async def _timeout_callback(context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = context.job.data
     chat_id = context.job.chat_id
     s = sessions.get(user_id)
+
+    # Якщо сесія вже чиста — не турбуємо студента
+    if not s.get(SK.ACTIVE_TEMPLATE) and not s.get(SK.HISTORY):
+        logger.info(f"[{user_id}] Timeout fired but session already clean — skipping.")
+        return
+
     _dur = int((datetime.datetime.now() - s[SK.SESSION_START]).total_seconds()) if s.get(SK.SESSION_START) else None
     _msg = s.get(SK.ANALYTICS_MSG_COUNT)
     bot_sheet_mgr.log_event(s.get(SK.PROFILE, {}), "Session Timeout", "🕒 DELAY", duration_sec=_dur, msg_count=_msg)
@@ -2665,6 +2677,9 @@ async def _handle_generate(
         session[SK.LAST_DOC_TYPE] = tmpl_name
         sessions.reset_dialog(user_id)
         logger.info(f"[{user_id}] Document generated: {tmpl_name} (total this session: {session.get(SK.DOCS_COUNT, 1)})")
+
+        # Скасовуємо таймаут — діалог завершено успішно
+        cancel_timeout(user_id, context)
 
         # Спочатку запитуємо фідбек, потім "що далі"
         kb_fb = InlineKeyboardMarkup([[
