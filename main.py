@@ -152,6 +152,7 @@ class SheetName:
     CONFIG        = "Config"
     LOGS          = "Logs"       # Apps Script логи (незмінно)
     BOT_LOGS      = "Bot_Logs"   # Логи бота з аналітикою
+    FEEDBACK      = "Feedback"     # Фідбек від студентів
     JOURNAL_LINKS = "Journal_Links"
     CHANGE_LOG    = "Change_Log"
 
@@ -239,6 +240,9 @@ class SK:
     AWAITING_PHONE_UPDATE  = "awaiting_phone_update"    # чекаємо підтвердження нового номера кнопкою
     AWAITING_EDIT_FIELD    = "awaiting_edit_field"      # яке поле чекає нового значення
     DOCS_COUNT             = "docs_count"               # к-сть заяв за поточну сесію (не скидається між заявами)
+    LAST_DOC_TYPE          = "last_doc_type"            # тип останньої заяви для фідбеку
+    AWAITING_FEEDBACK_TEXT = "awaiting_feedback_text"   # чекаємо вільний текст фідбеку
+    FEEDBACK_RATING        = "feedback_rating"          # оцінка яку вже поставили
 
 
 class RegStep(str, Enum):
@@ -702,6 +706,43 @@ class SheetManager:
         except Exception as exc:
             logger.error(f"log_event: {exc}")
 
+    def log_feedback(
+        self,
+        profile: Dict[str, Any],
+        fb_type: str,
+        rating: str,
+        reason: str = "",
+        text: str = "",
+        doc_type: str = "",
+    ) -> None:
+        """Записує фідбек від студента в аркуш Feedback."""
+        now   = datetime.datetime.now()
+        name  = profile.get(Col.NAME, "Невідомо")
+        group = profile.get(Col.GROUP, "—")
+        tg_id = profile.get(Col.TELEGRAM_ID, "—")
+        row = [
+            now.strftime("%d.%m.%Y"),
+            now.strftime("%H:%M:%S"),
+            name,
+            group,
+            fb_type,
+            rating,
+            reason,
+            text,
+            doc_type,
+            str(tg_id),
+        ]
+        try:
+            self._svc.spreadsheets().values().append(
+                spreadsheetId=self._sid,
+                range=f"{SheetName.FEEDBACK}!A:J",
+                valueInputOption="USER_ENTERED",
+                insertDataOption="INSERT_ROWS",
+                body={"values": [row]},
+            ).execute()
+        except Exception as exc:
+            logger.error(f"log_feedback: {exc}")
+
     # ── Приватні ─────────────────────────────────────────────────────────────
 
     def _write_cell(self, sheet: str, col_name: str, row_num: int, value: Any) -> bool:
@@ -1028,6 +1069,7 @@ CALLBACK_TEMPLATE_PREFIX = "tmpl:"
 CALLBACK_CONFIRM         = "confirm:"   # confirm:yes / confirm:no
 CALLBACK_EDIT_FIELD      = "edit:"      # edit:STUDENTS_PHONE / edit:PARENTS_PHONE / edit:PARENTS_NAME
 CALLBACK_DONE            = "done:"      # done:new / done:bye
+CALLBACK_FEEDBACK        = "fb:"        # fb:easy / fb:hard / fb:reason_X / fb:free / fb:topic_X
 
 # Статичний fallback — використовується якщо Bot_Logs недоступний
 _FALLBACK_TOP_TEMPLATES = [
@@ -1294,6 +1336,9 @@ def _default_session() -> Dict[str, Any]:
         SK.AWAITING_PHONE_UPDATE: False,  # чи чекаємо кнопку з номером
         SK.AWAITING_EDIT_FIELD:   None,   # яке поле редагується зараз
         SK.DOCS_COUNT:            0,      # к-сть згенерованих заяв
+        SK.LAST_DOC_TYPE:         "",     # тип останньої заяви
+        SK.AWAITING_FEEDBACK_TEXT: None,  # тип фідбеку що очікує текст
+        SK.FEEDBACK_RATING:         "",    # оцінка що очікує коментар
     }
 
 
@@ -1324,6 +1369,8 @@ class SessionStore:
         s[SK.AWAITING_PHONE_UPDATE]  = False
         s[SK.AWAITING_EDIT_FIELD]    = None
         s["tmpl_msg_count"]          = 0
+        s[SK.AWAITING_FEEDBACK_TEXT] = None
+        s[SK.FEEDBACK_RATING]        = ""
 
     def __contains__(self, item: str) -> bool:
         return item in self._store
@@ -1845,15 +1892,146 @@ async def callback_done(update, context) -> None:
             reply_markup=_make_template_keyboard(),
         )
     else:
-        # bye
+        # bye — показуємо прощання з кнопкою restart
         sessions.reset_dialog(user_id)
         kb_restart = InlineKeyboardMarkup([[
             InlineKeyboardButton("🔄 Розпочати знову", callback_data=f"{CALLBACK_DONE}restart"),
         ]])
         await query.edit_message_text(
-            "👋 До зустрічі! Якщо знадобиться допомога — чекаю.",
+            "👋 До зустрічі! Якщо знову знадобиться допомога — чекаю.",
             reply_markup=kb_restart,
         )
+
+
+
+async def callback_feedback(update, context) -> None:
+    """Обробник фідбеку після генерації заяви або /feedback."""
+    query   = update.callback_query
+    await query.answer()
+    user_id = str(query.from_user.id)
+    session = sessions.get(user_id)
+    key     = (query.data or "").replace(CALLBACK_FEEDBACK, "")
+    profile = session.get(SK.PROFILE, {})
+    doc_type = session.get(SK.LAST_DOC_TYPE, "")
+
+    # Легко — записуємо і питаємо що далі
+    if key == "easy":
+        sheet_mgr.log_feedback(profile, "after_doc", "✅ Легко", doc_type=doc_type)
+        await query.edit_message_text("🙏 Дякуємо за відгук!")
+        kb_next = InlineKeyboardMarkup([[
+            InlineKeyboardButton("📝 Ще одна заява", callback_data=f"{CALLBACK_DONE}new"),
+            InlineKeyboardButton("👋 На цьому все", callback_data=f"{CALLBACK_DONE}bye"),
+        ]])
+        await context.bot.send_message(query.message.chat_id, "Що робимо далі?", reply_markup=kb_next)
+        return
+
+    # Були труднощі — питаємо причину
+    if key == "hard":
+        kb_reason = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🤖 Бот не зрозумів мене", callback_data=f"{CALLBACK_FEEDBACK}r_understand")],
+            [InlineKeyboardButton("🔄 Забагато кроків", callback_data=f"{CALLBACK_FEEDBACK}r_steps")],
+            [InlineKeyboardButton("❓ Незрозумілі питання", callback_data=f"{CALLBACK_FEEDBACK}r_questions")],
+            [InlineKeyboardButton("🚨 Технічна помилка", callback_data=f"{CALLBACK_FEEDBACK}r_error")],
+            [InlineKeyboardButton("✏️ Інше — напишу текстом", callback_data=f"{CALLBACK_FEEDBACK}r_free")],
+        ])
+        await query.edit_message_text("Що саме було складно?", reply_markup=kb_reason)
+        return
+
+    # Причина вибрана — записуємо і питаємо що далі
+    reason_labels = {
+        "r_understand": "Бот не зрозумів мене",
+        "r_steps":      "Забагато кроків",
+        "r_questions":  "Незрозумілі питання",
+        "r_error":      "Технічна помилка",
+    }
+    if key in reason_labels:
+        sheet_mgr.log_feedback(profile, "after_doc", "⚠️ Труднощі",
+                               reason=reason_labels[key], doc_type=doc_type)
+        await query.edit_message_text("🙏 Дякуємо! Це допоможе покращити бота.")
+        kb_next = InlineKeyboardMarkup([[
+            InlineKeyboardButton("📝 Ще одна заява", callback_data=f"{CALLBACK_DONE}new"),
+            InlineKeyboardButton("👋 На цьому все", callback_data=f"{CALLBACK_DONE}bye"),
+        ]])
+        await context.bot.send_message(query.message.chat_id, "Що робимо далі?", reply_markup=kb_next)
+        return
+
+    # Вільний текст — встановлюємо стан очікування
+    if key == "r_free":
+        session[SK.AWAITING_FEEDBACK_TEXT] = "after_doc"
+        await query.edit_message_text("✏️ Напишіть ваш відгук текстом:")
+        return
+
+    # /feedback topics
+    topic_labels = {
+        "topic_rate":     "Оцінка бота",
+        "topic_suggest":  "Пропозиція",
+        "topic_bug":      "Повідомлення про помилку",
+    }
+    if key in topic_labels:
+        if key == "topic_rate":
+            kb_stars = InlineKeyboardMarkup([[
+                InlineKeyboardButton("1⭐", callback_data=f"{CALLBACK_FEEDBACK}stars_1"),
+                InlineKeyboardButton("2⭐", callback_data=f"{CALLBACK_FEEDBACK}stars_2"),
+                InlineKeyboardButton("3⭐", callback_data=f"{CALLBACK_FEEDBACK}stars_3"),
+                InlineKeyboardButton("4⭐", callback_data=f"{CALLBACK_FEEDBACK}stars_4"),
+                InlineKeyboardButton("5⭐", callback_data=f"{CALLBACK_FEEDBACK}stars_5"),
+            ]])
+            await query.edit_message_text("⭐ Оцініть бота від 1 до 5:", reply_markup=kb_stars)
+        else:
+            session[SK.AWAITING_FEEDBACK_TEXT] = key
+            prompts = {
+                "topic_suggest": "💡 Опишіть вашу пропозицію:",
+                "topic_bug":     "🐛 Опишіть, що сталось (що робили, очікуваний результат, фактичний):",
+            }
+            await query.edit_message_text(prompts[key])
+        return
+
+    # Обрано зірку — зберігаємо оцінку і просимо коментар (опційно)
+    if key.startswith("stars_"):
+        rating = key.replace("stars_", "") + "⭐"
+        session[SK.FEEDBACK_RATING]        = rating
+        session[SK.AWAITING_FEEDBACK_TEXT] = "topic_rate"
+        kb_skip = InlineKeyboardMarkup([[
+            InlineKeyboardButton("Пропустити →", callback_data=f"{CALLBACK_FEEDBACK}skip_comment"),
+        ]])
+        await query.edit_message_text(
+            f"Ви поставили {rating}\n\n💬 Додайте коментар (опційно) або натисніть «Пропустити»:",
+            reply_markup=kb_skip,
+        )
+        return
+
+    # Пропустити коментар — зберігаємо тільки зірку
+    if key == "skip_comment":
+        rating  = session.get(SK.FEEDBACK_RATING, "—")
+        profile = session.get(SK.PROFILE, {})
+        session[SK.AWAITING_FEEDBACK_TEXT] = None
+        session[SK.FEEDBACK_RATING]        = ""
+        sheet_mgr.log_feedback(profile, "Оцінка", rating, text="(без коментаря)")
+        await query.edit_message_text("🙏 Дякуємо за оцінку!")
+        if Env.ADMIN_ID:
+            name  = profile.get(Col.NAME, "?")
+            group = profile.get(Col.GROUP, "—")
+            try:
+                await context.bot.send_message(
+                    chat_id=int(Env.ADMIN_ID),
+                    text=f"⭐ Оцінка бота\n👤 {name} | {group}\nОцінка: {rating}",
+                )
+            except Exception:
+                pass
+        return
+
+
+async def cmd_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Команда /feedback — довільний фідбек від студента."""
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("⭐ Оцінити бота", callback_data=f"{CALLBACK_FEEDBACK}topic_rate")],
+        [InlineKeyboardButton("💡 Пропозиція", callback_data=f"{CALLBACK_FEEDBACK}topic_suggest")],
+        [InlineKeyboardButton("🐛 Повідомити про помилку", callback_data=f"{CALLBACK_FEEDBACK}topic_bug")],
+    ])
+    await update.message.reply_text(
+        "💬 Ваш відгук важливий для нас!\nОберіть тему:",
+        reply_markup=kb,
+    )
 
 
 
@@ -1975,6 +2153,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "🤖 **Довідка:**\n\n"
         "/start — головне меню / нова заява\n"
         "/mydata — переглянути мої дані\n"
+        "/feedback — залишити відгук або пропозицію\n"
         "/edit — змінити групу або телефон\n"
         "/cancel — скасувати / вийти з редагування\n\n"
         "Просто напишіть, що потрібно (наприклад: *«Заява на пропуск»*) — "
@@ -1994,6 +2173,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     chat_id = update.effective_chat.id
     session = sessions.get(user_id)
     text    = (update.message.text or "").strip()
+
+    # ── Автоматичне завантаження профілю якщо сесія порожня ──────────────────
+    if not session.get(SK.PROFILE, {}).get(Col.NAME) and session.get(SK.REG_STEP) != RegStep.WAITING_EMAIL:
+        try:
+            _auto = sheet_mgr.get_student_by_telegram_id(user_id)
+            if _auto:
+                session[SK.PROFILE]  = _auto
+                session[SK.REG_STEP] = RegStep.COMPLETED
+        except Exception:
+            pass
 
     # ── Очікуємо підтвердження нового номера телефону кнопкою ────────────────
     if (session.get(SK.AWAITING_PHONE_UPDATE) or session.get(SK.AWAITING_EDIT_FIELD) == Col.STUDENTS_PHONE) and update.message.contact:
@@ -2033,6 +2222,42 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             await update.message.reply_text(f"✅ Номер змінено: **{new_phone}**", parse_mode="Markdown")
         else:
             await update.message.reply_text("❌ Помилка запису. Спробуйте ще раз.")
+        return
+
+    # ── Очікуємо вільний текст фідбеку ──────────────────────────────────────
+    fb_awaiting = session.get(SK.AWAITING_FEEDBACK_TEXT)
+    if fb_awaiting and text:
+        session[SK.AWAITING_FEEDBACK_TEXT] = None
+        profile = session.get(SK.PROFILE, {})
+        doc_type = session.get(SK.LAST_DOC_TYPE, "")
+        topic_labels = {
+            "after_doc":    "Після заяви",
+            "topic_rate":   "Оцінка",
+            "topic_suggest":"Пропозиція",
+            "topic_bug":    "Помилка",
+        }
+        fb_type = topic_labels.get(fb_awaiting, fb_awaiting)
+        rating = session.get(SK.FEEDBACK_RATING, "")
+        session[SK.FEEDBACK_RATING] = ""
+        sheet_mgr.log_feedback(profile, fb_type, rating or "✏️ Текст", text=text, doc_type=doc_type)
+        # Сповіщення адміна
+        if Env.ADMIN_ID:
+            name  = profile.get(Col.NAME, "?")
+            group = profile.get(Col.GROUP, "—")
+            try:
+                await context.bot.send_message(
+                    chat_id=int(Env.ADMIN_ID),
+                    text=f"💬 Фідбек [{fb_type}]\n👤 {name} | {group}\n\n{text}",
+                )
+            except Exception:
+                pass
+        await update.message.reply_text("🙏 Дякуємо за відгук!")
+        if fb_awaiting == "after_doc":
+            kb_next = InlineKeyboardMarkup([[
+                InlineKeyboardButton("📝 Ще одна заява", callback_data=f"{CALLBACK_DONE}new"),
+                InlineKeyboardButton("👋 На цьому все", callback_data=f"{CALLBACK_DONE}bye"),
+            ]])
+            await update.message.reply_text("Що робимо далі?", reply_markup=kb_next)
         return
 
     # ── Очікуємо нове значення поля (редагування через кнопки) ──────────────
@@ -2434,18 +2659,19 @@ async def _handle_generate(
         pdf_file.seek(0)
         await update.message.reply_document(pdf_file, filename=filename, caption="Ваша копія 📄")
 
-        session[SK.DOCS_COUNT] = session.get(SK.DOCS_COUNT, 0) + 1
+        session[SK.DOCS_COUNT]    = session.get(SK.DOCS_COUNT, 0) + 1
+        session[SK.LAST_DOC_TYPE] = tmpl_name
         sessions.reset_dialog(user_id)
         logger.info(f"[{user_id}] Document generated: {tmpl_name} (total this session: {session.get(SK.DOCS_COUNT, 1)})")
 
-        # Кнопки після генерації
-        kb_done = InlineKeyboardMarkup([[
-            InlineKeyboardButton("📝 Ще одна заява", callback_data=f"{CALLBACK_DONE}new"),
-            InlineKeyboardButton("👋 На цьому все", callback_data=f"{CALLBACK_DONE}bye"),
+        # Спочатку запитуємо фідбек, потім "що далі"
+        kb_fb = InlineKeyboardMarkup([[
+            InlineKeyboardButton("✅ Легко", callback_data=f"{CALLBACK_FEEDBACK}easy"),
+            InlineKeyboardButton("⚠️ Були труднощі", callback_data=f"{CALLBACK_FEEDBACK}hard"),
         ]])
         await update.message.reply_text(
-            "Що робимо далі?",
-            reply_markup=kb_done,
+            "💬 Наскільки легко було оформити заяву через бота?",
+            reply_markup=kb_fb,
         )
 
     except Exception as exc:
@@ -2499,7 +2725,8 @@ async def _post_init(application: Application) -> None:
         BotCommand("start",  "🏠 Головна / нова заява"),
         BotCommand("edit",   "✏️ Редагувати дані"),
         BotCommand("cancel", "❌ Скасувати / Назад"),
-        BotCommand("mydata", "👤 Мої дані"),
+        BotCommand("mydata",    "👤 Мої дані"),
+        BotCommand("feedback",  "💬 залишити відгук"),
         BotCommand("help",   "ℹ️ Допомога"),
     ]
     await application.bot.set_my_commands(commands)
@@ -2526,7 +2753,9 @@ def main() -> None:
     app.add_handler(CallbackQueryHandler(callback_edit_field,      pattern=f"^{CALLBACK_EDIT_FIELD}"))
     app.add_handler(CallbackQueryHandler(callback_confirm,         pattern=f"^{CALLBACK_CONFIRM}"))
     app.add_handler(CallbackQueryHandler(callback_done,            pattern=f"^{CALLBACK_DONE}"))
-    app.add_handler(CommandHandler("edit",   cmd_edit))
+    app.add_handler(CommandHandler("edit",     cmd_edit))
+    app.add_handler(CommandHandler("feedback", cmd_feedback))
+    app.add_handler(CallbackQueryHandler(callback_feedback, pattern=f"^{CALLBACK_FEEDBACK}"))
     app.add_handler(CommandHandler("mydata", cmd_mydata))
     app.add_handler(CommandHandler("cancel", cmd_cancel))
     app.add_handler(CommandHandler("help",   cmd_help))
