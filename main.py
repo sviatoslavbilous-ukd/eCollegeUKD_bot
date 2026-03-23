@@ -71,6 +71,7 @@ _SECRET_NAMES = [
     "SPREADSHEET_ID",
     "TEMPLATES_FOLDER_ID",
     "ARCHIVE_FOLDER_ID",
+    "BOT_INFO_SPREADSHEET_ID",
     "TARGET_PRINT_EMAIL",
     "CLIENT_SECRET_FILE",
     "ADMIN_ID",
@@ -125,7 +126,8 @@ class Env:
     """Усі змінні середовища в одному місці."""
     CLIENT_SECRET_FILE  = os.getenv("CLIENT_SECRET_FILE")
     TEMPLATES_FOLDER_ID = os.getenv("TEMPLATES_FOLDER_ID")
-    ARCHIVE_FOLDER_ID   = os.getenv("ARCHIVE_FOLDER_ID")   # папка "Архів заяв" на Drive
+    ARCHIVE_FOLDER_ID         = os.getenv("ARCHIVE_FOLDER_ID")         # папка "Архів заяв"
+    BOT_INFO_SPREADSHEET_ID   = os.getenv("BOT_INFO_SPREADSHEET_ID")   # окрема таблиця Bot_Info
     SPREADSHEET_ID      = os.getenv("SPREADSHEET_ID")
     TARGET_PRINT_EMAIL  = os.getenv("TARGET_PRINT_EMAIL")
     TELEGRAM_TOKEN      = os.getenv("TELEGRAM_TOKEN")
@@ -917,7 +919,7 @@ class DevNotifier:
 
         # ── Logs sheet ───────────────────────────────────────────────────────
         # Записуємо в той самий аркуш Logs з окремим статусом
-        sheet_mgr.log_event(profile, f"❓ UNKNOWN: {message[:80]}", "🔔 NOTIFIED DEV")
+        bot_sheet_mgr.log_event(profile, f"❓ UNKNOWN: {message[:80]}", "🔔 NOTIFIED DEV")
 
     async def notify_data_change(
         self,
@@ -1438,7 +1440,7 @@ async def _timeout_callback(context: ContextTypes.DEFAULT_TYPE) -> None:
     s = sessions.get(user_id)
     _dur = int((datetime.datetime.now() - s[SK.SESSION_START]).total_seconds()) if s.get(SK.SESSION_START) else None
     _msg = s.get(SK.ANALYTICS_MSG_COUNT)
-    sheet_mgr.log_event(s.get(SK.PROFILE, {}), "Session Timeout", "🕒 DELAY", duration_sec=_dur, msg_count=_msg)
+    bot_sheet_mgr.log_event(s.get(SK.PROFILE, {}), "Session Timeout", "🕒 DELAY", duration_sec=_dur, msg_count=_msg)
     sessions.reset_dialog(user_id)
     logger.info(f"[{user_id}] Session timeout.")
     try:
@@ -1916,7 +1918,7 @@ async def callback_feedback(update, context) -> None:
 
     # Легко — записуємо і питаємо що далі
     if key == "easy":
-        sheet_mgr.log_feedback(profile, "after_doc", "✅ Легко", doc_type=doc_type)
+        bot_sheet_mgr.log_feedback(profile, "after_doc", "✅ Легко", doc_type=doc_type)
         await query.edit_message_text("🙏 Дякуємо за відгук!")
         kb_next = InlineKeyboardMarkup([[
             InlineKeyboardButton("📝 Ще одна заява", callback_data=f"{CALLBACK_DONE}new"),
@@ -1945,7 +1947,7 @@ async def callback_feedback(update, context) -> None:
         "r_error":      "Технічна помилка",
     }
     if key in reason_labels:
-        sheet_mgr.log_feedback(profile, "after_doc", "⚠️ Труднощі",
+        bot_sheet_mgr.log_feedback(profile, "after_doc", "⚠️ Труднощі",
                                reason=reason_labels[key], doc_type=doc_type)
         await query.edit_message_text("🙏 Дякуємо! Це допоможе покращити бота.")
         kb_next = InlineKeyboardMarkup([[
@@ -2006,7 +2008,7 @@ async def callback_feedback(update, context) -> None:
         profile = session.get(SK.PROFILE, {})
         session[SK.AWAITING_FEEDBACK_TEXT] = None
         session[SK.FEEDBACK_RATING]        = ""
-        sheet_mgr.log_feedback(profile, "Оцінка", rating, text="(без коментаря)")
+        bot_sheet_mgr.log_feedback(profile, "Оцінка", rating, text="(без коментаря)")
         await query.edit_message_text("🙏 Дякуємо за оцінку!")
         if Env.ADMIN_ID:
             name  = profile.get(Col.NAME, "?")
@@ -2239,7 +2241,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         fb_type = topic_labels.get(fb_awaiting, fb_awaiting)
         rating = session.get(SK.FEEDBACK_RATING, "")
         session[SK.FEEDBACK_RATING] = ""
-        sheet_mgr.log_feedback(profile, fb_type, rating or "✏️ Текст", text=text, doc_type=doc_type)
+        bot_sheet_mgr.log_feedback(profile, fb_type, rating or "✏️ Текст", text=text, doc_type=doc_type)
         # Сповіщення адміна
         if Env.ADMIN_ID:
             name  = profile.get(Col.NAME, "?")
@@ -2352,7 +2354,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             session[SK.BLOCKED_UNTIL] = datetime.datetime.now() + timedelta(hours=1)
             session[SK.HISTORY]       = []
             session[SK.MSG_COUNT]     = 0
-            sheet_mgr.log_event(session.get(SK.PROFILE, {}), "SPAM FILTER", "🚫 BLOCKED")
+            bot_sheet_mgr.log_event(session.get(SK.PROFILE, {}), "SPAM FILTER", "🚫 BLOCKED")
             logger.warning(f"[{user_id}] SPAM BLOCK.")
             await update.message.reply_text(UI.SPAM_BLOCK, parse_mode="Markdown")
             return
@@ -2360,7 +2362,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         if session.get(SK.DOCS_COUNT, 0) >= 5:
             session[SK.BLOCKED_UNTIL] = datetime.datetime.now() + timedelta(hours=1)
             session[SK.DOCS_COUNT]    = 0
-            sheet_mgr.log_event(session.get(SK.PROFILE, {}), "SPAM FILTER", "🚫 DOCS LIMIT")
+            bot_sheet_mgr.log_event(session.get(SK.PROFILE, {}), "SPAM FILTER", "🚫 DOCS LIMIT")
             logger.warning(f"[{user_id}] DOCS LIMIT BLOCK.")
             await update.message.reply_text(UI.SPAM_BLOCK, parse_mode="Markdown")
             return
@@ -2372,7 +2374,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         session["tmpl_msg_count"] = _tmpl_msg
         if _tmpl_msg > 15:
             sessions.reset_dialog(user_id)
-            sheet_mgr.log_event(session.get(SK.PROFILE, {}), "SPAM FILTER", "🚫 TMPL MSG LIMIT")
+            bot_sheet_mgr.log_event(session.get(SK.PROFILE, {}), "SPAM FILTER", "🚫 TMPL MSG LIMIT")
             logger.warning(f"[{user_id}] TMPL MSG LIMIT BLOCK.")
             await update.message.reply_text(
                 "⚠️ Схоже, оформлення заяви затяглось. Діалог скинуто.\n"
@@ -2649,7 +2651,7 @@ async def _handle_generate(
         # Витягуємо поля заяви для розширеного логу
         _extra = {k: str(full_data.get(k, "")) for k in
                   ("DATE_FROM", "DATE_TO", "REASON", "SUBJECT", "LESSONS_RANGE", "SPECIALTY_TO")}
-        sheet_mgr.log_event(full_data, tmpl_name, log_status,
+        bot_sheet_mgr.log_event(full_data, tmpl_name, log_status,
                             duration_sec=_dur, msg_count=_msg,
                             extra_fields=_extra, pdf_url=_pdf_url)
 
@@ -2676,7 +2678,7 @@ async def _handle_generate(
 
     except Exception as exc:
         logger.error(f"[{user_id}] generate error: {exc}")
-        sheet_mgr.log_event(session.get(SK.PROFILE, {}), tmpl_name, f"🔥 ERROR: {exc}")
+        bot_sheet_mgr.log_event(session.get(SK.PROFILE, {}), tmpl_name, f"🔥 ERROR: {exc}")
         kb_retry = InlineKeyboardMarkup([[
             InlineKeyboardButton("\U0001f504 \u0421\u043f\u0440\u043e\u0431\u0443\u0432\u0430\u0442\u0438 \u0437\u043d\u043e\u0432\u0443", callback_data=f"{CALLBACK_DONE}restart"),
         ]])
@@ -2709,7 +2711,8 @@ def _get_google_creds() -> Credentials:
 # Глобальні сервіси (ініціалізуються один раз при старті)
 _creds      = _get_google_creds()
 drive_mgr   = DriveManager(_creds)
-sheet_mgr   = SheetManager(_creds, Env.SPREADSHEET_ID)
+sheet_mgr      = SheetManager(_creds, Env.SPREADSHEET_ID)
+bot_sheet_mgr  = SheetManager(_creds, Env.BOT_INFO_SPREADSHEET_ID or Env.SPREADSHEET_ID)
 email_mgr   = EmailManager(_creds)
 brain       = GeminiBrain()
 top_templates_cache = TopTemplatesCache()
@@ -2762,7 +2765,6 @@ def main() -> None:
     app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_message))
 
     app.run_polling(allowed_updates=Update.ALL_TYPES)
-
 
 
 if __name__ == "__main__":
