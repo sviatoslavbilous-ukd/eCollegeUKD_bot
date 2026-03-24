@@ -716,12 +716,14 @@ class SheetManager:
         reason: str = "",
         text: str = "",
         doc_type: str = "",
+        user_id: str = "",
     ) -> None:
         """Записує фідбек від студента в аркуш Feedback."""
         now   = datetime.datetime.now()
         name  = profile.get(Col.NAME, "Невідомо")
         group = profile.get(Col.GROUP, "—")
-        tg_id = profile.get(Col.TELEGRAM_ID, "—")
+        # user_id має пріоритет над profile.TELEGRAM_ID
+        tg_id = user_id or profile.get(Col.TELEGRAM_ID, "—")
         row = [
             now.strftime("%d.%m.%Y"),
             now.strftime("%H:%M:%S"),
@@ -1930,8 +1932,8 @@ async def callback_feedback(update, context) -> None:
 
     # Легко — записуємо і питаємо що далі
     if key == "easy":
-        bot_sheet_mgr.log_feedback(profile, "after_doc", "✅ Легко", doc_type=doc_type)
-        await query.edit_message_text("🙏 Дякуємо за відгук!")
+        bot_sheet_mgr.log_feedback(profile, "after_doc", "✅ Легко", doc_type=doc_type, user_id=user_id)
+        await query.edit_message_text("🙏 Дякуюмо за відгук!")
         kb_next = InlineKeyboardMarkup([[
             InlineKeyboardButton("📝 Ще одна заява", callback_data=f"{CALLBACK_DONE}new"),
             InlineKeyboardButton("👋 На цьому все", callback_data=f"{CALLBACK_DONE}bye"),
@@ -1960,8 +1962,8 @@ async def callback_feedback(update, context) -> None:
     }
     if key in reason_labels:
         bot_sheet_mgr.log_feedback(profile, "after_doc", "⚠️ Труднощі",
-                               reason=reason_labels[key], doc_type=doc_type)
-        await query.edit_message_text("🙏 Дякуємо! Це допоможе покращити бота.")
+                               reason=reason_labels[key], doc_type=doc_type, user_id=user_id)
+        await query.edit_message_text("🙏 Дякуюмо! Це допоможе покращити бота.")
         kb_next = InlineKeyboardMarkup([[
             InlineKeyboardButton("📝 Ще одна заява", callback_data=f"{CALLBACK_DONE}new"),
             InlineKeyboardButton("👋 На цьому все", callback_data=f"{CALLBACK_DONE}bye"),
@@ -2020,7 +2022,7 @@ async def callback_feedback(update, context) -> None:
         profile = session.get(SK.PROFILE, {})
         session[SK.AWAITING_FEEDBACK_TEXT] = None
         session[SK.FEEDBACK_RATING]        = ""
-        bot_sheet_mgr.log_feedback(profile, "Оцінка", rating, text="(без коментаря)")
+        bot_sheet_mgr.log_feedback(profile, "Оцінка", rating, text="(без коментаря)", user_id=user_id)
         await query.edit_message_text("🙏 Дякуємо за оцінку!")
         if Env.ADMIN_ID:
             name  = profile.get(Col.NAME, "?")
@@ -2253,7 +2255,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         fb_type = topic_labels.get(fb_awaiting, fb_awaiting)
         rating = session.get(SK.FEEDBACK_RATING, "")
         session[SK.FEEDBACK_RATING] = ""
-        bot_sheet_mgr.log_feedback(profile, fb_type, rating or "✏️ Текст", text=text, doc_type=doc_type)
+        bot_sheet_mgr.log_feedback(profile, fb_type, rating or "✏️ Текст", text=text, doc_type=doc_type, user_id=user_id)
         # Сповіщення адміна
         if Env.ADMIN_ID:
             name  = profile.get(Col.NAME, "?")
@@ -2265,7 +2267,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 )
             except Exception:
                 pass
-        await update.message.reply_text("🙏 Дякуємо за відгук!")
+        await update.message.reply_text("🙏 Дякуюмо за відгук!")
         if fb_awaiting == "after_doc":
             kb_next = InlineKeyboardMarkup([[
                 InlineKeyboardButton("📝 Ще одна заява", callback_data=f"{CALLBACK_DONE}new"),
